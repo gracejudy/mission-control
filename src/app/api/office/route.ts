@@ -72,7 +72,8 @@ async function getAgentStatusFromGateway(): Promise<
     }
 
     // Try to fetch sessions from gateway
-    const response = await fetch("http://localhost:18789/api/sessions", {
+    const gatewayBase = process.env.OPENCLAW_GATEWAY_URL || `http://localhost:${config.gateway?.port || 18789}`;
+    const response = await fetch(`${gatewayBase}/api/sessions`, {
       headers: {
         Authorization: `Bearer ${gatewayToken}`,
       },
@@ -189,18 +190,23 @@ export async function GET() {
     // Try gateway first, fallback to file-based
     const gatewayStatus = await getAgentStatusFromGateway();
 
+    const defaultWorkspace = config.agents.defaults?.workspace || "";
+
     const agents = config.agents.list.map((agent: any) => {
+      const agentName = agent.name || agent.identity?.name || agent.id;
       const agentInfo = AGENT_CONFIG[agent.id as keyof typeof AGENT_CONFIG] || {
         emoji: "🤖",
         color: "#666",
-        name: agent.name || agent.id,
+        name: agentName,
         role: "Agent",
       };
+
+      const workspace = agent.workspace || defaultWorkspace;
 
       // Get status from gateway, or fallback to files
       let status = gatewayStatus[agent.id];
       if (!status) {
-        status = getAgentStatusFromFiles(agent.id, agent.workspace);
+        status = getAgentStatusFromFiles(agent.id, workspace);
       }
 
       // Map freelance -> devclaw for canvas compatibility

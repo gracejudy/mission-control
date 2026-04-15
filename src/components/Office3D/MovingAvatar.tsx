@@ -13,7 +13,7 @@ interface Obstacle {
 
 interface MovingAvatarProps {
   agent: AgentConfig;
-  state: AgentState;
+  state?: AgentState;
   officeBounds: {
     minX: number;
     maxX: number;
@@ -25,9 +25,9 @@ interface MovingAvatarProps {
   onPositionUpdate: (id: string, pos: Vector3) => void;
 }
 
-export default function MovingAvatar({ 
-  agent, 
-  state, 
+export default function MovingAvatar({
+  agent,
+  state: stateProp,
   officeBounds, 
   obstacles, 
   otherAvatarPositions,
@@ -64,9 +64,10 @@ export default function MovingAvatar({
     return pos;
   });
 
+  const state = stateProp ?? { id: agent.id, status: 'idle' as const };
   const [targetPos, setTargetPos] = useState(initialPos);
   const currentPos = useRef(initialPos.clone());
-  
+
   // Notificar posición inicial
   useEffect(() => {
     onPositionUpdate(agent.id, initialPos.clone());

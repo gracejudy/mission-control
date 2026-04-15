@@ -61,17 +61,24 @@ export async function GET() {
     const configPath = (process.env.OPENCLAW_DIR || "/root/.openclaw") + "/openclaw.json";
     const config = JSON.parse(readFileSync(configPath, "utf-8"));
 
+    const defaultWorkspace = config.agents.defaults?.workspace || "";
+
     // Get agents from config
     const agents: Agent[] = config.agents.list.map((agent: any) => {
-      const agentInfo = getAgentDisplayInfo(agent.id, agent);
+      // Support both identity.name (Judy's format) and name (upstream format)
+      const agentWithName = { ...agent, name: agent.name || agent.identity?.name };
+      const agentInfo = getAgentDisplayInfo(agent.id, agentWithName);
 
       // Get telegram account info
       const telegramAccount =
         config.channels?.telegram?.accounts?.[agent.id];
       const botToken = telegramAccount?.botToken;
 
+      // workspace may be at agent level or inherited from defaults
+      const workspace = agent.workspace || defaultWorkspace;
+
       // Check if agent has recent activity
-      const memoryPath = join(agent.workspace, "memory");
+      const memoryPath = join(workspace, "memory");
       let lastActivity = undefined;
       let status: "online" | "offline" = "offline";
 
@@ -122,7 +129,7 @@ export async function GET() {
         color: agentInfo.color,
         model:
           agent.model?.primary || config.agents.defaults.model.primary,
-        workspace: agent.workspace,
+        workspace,
         dmPolicy:
           telegramAccount?.dmPolicy ||
           config.channels?.telegram?.dmPolicy ||

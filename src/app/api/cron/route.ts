@@ -1,28 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execSync } from "child_process";
+import { readFileSync } from "fs";
 
-function getGatewayConfig() {
-  try {
-    const configRaw = require("fs").readFileSync((process.env.OPENCLAW_DIR || "/root/.openclaw") + "/openclaw.json", "utf-8");
-    const config = JSON.parse(configRaw);
-    return {
-      token: config.gateway?.auth?.token || "",
-      port: config.gateway?.port || 18789,
-    };
-  } catch {
-    return { token: "", port: 18789 };
-  }
-}
+const OPENCLAW_DIR = process.env.OPENCLAW_DIR || "/Users/judy/.openclaw";
+const EXEC_ENV = { ...process.env, HOME: "/Users/judy", PATH: "/usr/local/bin:/usr/bin:/bin" };
 
-// GET: List all cron jobs from the OpenClaw gateway
+// GET: List all cron jobs — read directly from filesystem (CLI unreliable in Next.js sandbox)
 export async function GET() {
   try {
-    const output = execSync("openclaw cron list --json --all 2>/dev/null", {
-      timeout: 10000,
-      encoding: "utf-8",
-    });
-
-    const data = JSON.parse(output);
+    const raw = readFileSync(`${OPENCLAW_DIR}/cron/jobs.json`, "utf-8");
+    const data = JSON.parse(raw);
     const jobs = (data.jobs || []).map((job: Record<string, unknown>) => ({
       id: job.id,
       agentId: job.agentId || "main",
@@ -49,9 +36,9 @@ export async function GET() {
 
     return NextResponse.json(jobs);
   } catch (error) {
-    console.error("Error fetching cron jobs from gateway:", error);
+    console.error("Error reading cron jobs:", error);
     return NextResponse.json(
-      { error: "Failed to fetch cron jobs from OpenClaw gateway" },
+      { error: "Failed to read cron jobs" },
       { status: 500 }
     );
   }
@@ -99,10 +86,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const action = enabled ? "enable" : "disable";
-    // Use openclaw CLI to update the job
     const output = execSync(
-      `openclaw cron ${action} ${id} --json 2>/dev/null || openclaw cron update ${id} --enabled=${enabled} --json 2>/dev/null`,
-      { timeout: 10000, encoding: "utf-8" }
+      `/usr/local/bin/openclaw cron ${action} ${id} --json 2>/dev/null || /usr/local/bin/openclaw cron update ${id} --enabled=${enabled} --json 2>/dev/null`,
+      { timeout: 10000, encoding: "utf-8", env: EXEC_ENV }
     );
 
     return NextResponse.json({ success: true, id, enabled });
@@ -125,9 +111,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Job ID is required" }, { status: 400 });
     }
 
-    execSync(`openclaw cron remove ${id} 2>/dev/null`, {
+    execSync(`/usr/local/bin/openclaw cron remove ${id} 2>/dev/null`, {
       timeout: 10000,
       encoding: "utf-8",
+      env: EXEC_ENV,
     });
 
     return NextResponse.json({ success: true, deleted: id });
