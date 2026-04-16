@@ -4,13 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import { Search, Bell, User, Command, ExternalLink } from "lucide-react";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { NotificationDropdown } from "@/components/NotificationDropdown";
-import { useRouter } from "next/navigation";
-
 export function TopBar() {
   const [showSearch, setShowSearch] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -229,7 +226,7 @@ export function TopBar() {
                 {/* Judy */}
                 <button
                   onClick={() => {
-                    router.push("/about");
+                    window.open("/about/about_judy.html", "_blank");
                     setShowUserMenu(false);
                   }}
                   className="flex items-center justify-between w-full px-4 py-3 text-left"
