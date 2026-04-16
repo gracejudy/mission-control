@@ -56,135 +56,20 @@ NEXT_PUBLIC_COMPANY_NAME=JUDY MISSION CONTROL
 
 ---
 
-## 3. Judy openclaw.json 구조 — 업스트림과 다른 점
+## 3. 알려진 버그 및 해결책
 
-업스트림 TenacitOS는 openclaw.json 에이전트 구조를 아래처럼 가정:
+> 상세 내용은 [`../../docs/TROUBLESHOOTING.md`](../../docs/TROUBLESHOOTING.md) 참조
 
-```json
-{
-  "agents": {
-    "list": [
-      { "id": "main", "name": "Main", "workspace": "/path/to/workspace" }
-    ]
-  }
-}
-```
-
-**Judy 환경은 다르다:**
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "workspace": "/Users/judy/.openclaw/workspace",
-      "model": { "primary": "claude-opus-4-5" }
-    },
-    "list": [
-      {
-        "id": "main",
-        "identity": { "name": "Judy" },
-        "workspace": null  ← 없거나 null (defaults에서 상속)
-      }
-    ]
-  }
-}
-```
-
-**이 차이로 발생한 버그:**
-- `agent.name` → `undefined` (실제 위치: `agent.identity.name`)
-- `agent.workspace` → `undefined` (실제 위치: `agents.defaults.workspace`)
-
-**수정된 파일:** `src/app/api/agents/route.ts`, `src/app/api/office/route.ts`  
-**핵심 패치:**
-```typescript
-const defaultWorkspace = config.agents.defaults?.workspace || "";
-const agentName = agent.name || agent.identity?.name || agent.id;
-const workspace = agent.workspace || defaultWorkspace;
-```
+| 항목 | 요약 |
+|------|------|
+| openclaw.json 구조 차이 | `agent.name` / `agent.workspace` undefined → `identity.name` / `defaults.workspace` 패치 |
+| Cron Jobs API CLI 실패 | Next.js 샌드박스에서 CLI 신뢰 불가 → GET은 파일 직접 읽기로 교체 |
+| Office 3D SSR 오류 | `ssr: false`는 Server Component 불가 → `Office3DClient.tsx` 분리 |
+| Mac 비호환 경고 | `df -BG`, `/proc/net/dev` Linux 전용 → 동작에는 무영향 |
 
 ---
 
-## 4. Cron Jobs API — CLI 대신 파일 직접 읽기
-
-**문제:** `execSync("openclaw cron list --json")` 가 Next.js Turbopack dev server 내부에서 exit code 1 (빈 stdout)으로 실패.  
-터미널에서는 정상 동작하지만 Next.js 프로세스 샌드박스에서 CLI가 신뢰할 수 없음.
-
-**해결:** GET은 파일 직접 읽기, PUT/DELETE는 CLI 유지 (env 명시)
-
-```typescript
-// src/app/api/cron/route.ts
-
-const OPENCLAW_DIR = process.env.OPENCLAW_DIR || "/Users/judy/.openclaw";
-const EXEC_ENV = { ...process.env, HOME: "/Users/judy", PATH: "/usr/local/bin:/usr/bin:/bin" };
-
-// GET: 파일 직접 읽기
-export async function GET() {
-  const raw = readFileSync(`${OPENCLAW_DIR}/cron/jobs.json`, "utf-8");
-  const data = JSON.parse(raw);
-  // ...
-}
-
-// PUT/DELETE: CLI 사용 시 반드시 env 명시
-execSync(`openclaw cron enable ${id}`, { env: EXEC_ENV });
-```
-
----
-
-## 5. Office 3D 탭 — SSR 비활성화 필수
-
-**문제:** Three.js / React-Three-Fiber는 WebGL(브라우저 전용 API)을 사용.  
-`next/dynamic`의 `ssr: false` 는 **Server Component에서 사용 불가**.
-
-**잘못된 패턴 (에러 발생):**
-```tsx
-// page.tsx — Server Component (metadata export 있음)
-import dynamic from 'next/dynamic';
-const Office3D = dynamic(() => import('...'), { ssr: false }); // ← 에러!
-```
-
-**올바른 패턴:**
-```
-src/app/office/
-  page.tsx          ← Server Component (metadata만)
-  Office3DClient.tsx ← 'use client' + dynamic ssr:false
-```
-
-```tsx
-// Office3DClient.tsx
-'use client';
-import dynamic from 'next/dynamic';
-
-const Office3D = dynamic(() => import('@/components/Office3D/Office3D'), {
-  ssr: false,
-  loading: () => <div>Loading 3D Office...</div>,
-});
-
-export default function Office3DClient() {
-  return <Office3D />;
-}
-```
-
-```tsx
-// page.tsx
-import Office3DClient from './Office3DClient';
-export const metadata = { title: 'The Office 3D | Mission Control' };
-export default function OfficePage() { return <Office3DClient />; }
-```
-
----
-
-## 6. Mac 환경 비호환 — 비치명적 경고
-
-아래 에러들은 Linux 전용 코드 때문. 대시보드 동작에는 영향 없음.
-
-| 에러 | 원인 | 위치 |
-|------|------|------|
-| `Cannot read properties of undefined (reading 'replace')` | `df -BG` 출력 포맷이 Mac/Linux 다름 | `src/app/api/system/stats/route.ts:32` |
-| `ENOENT: /proc/net/dev` | Linux 전용 네트워크 통계 파일 | `src/app/api/system/monitor/route.ts` |
-
----
-
-## 7. Gateway 연동 확인
+## 4. Gateway 연동 확인
 
 ```bash
 # gateway 토큰 확인
@@ -201,7 +86,7 @@ curl -s -H "Authorization: Bearer <token>" \
 
 ---
 
-## 8. 재설치 체크리스트
+## 5. 재설치 체크리스트
 
 - [ ] `.env.local` 생성 (위 2번 참고)
 - [ ] `OPENCLAW_GATEWAY_URL` 실제 포트로 설정 (기본 18789 아님)

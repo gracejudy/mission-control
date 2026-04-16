@@ -15,10 +15,12 @@ import {
   DollarSign,
   Settings,
   History,
+  Target,
 } from "lucide-react";
 
 const dockItems = [
   { href: "/", label: "Dashboard", icon: Home },
+  { href: "/mission", label: "Mission", icon: Target },
   { href: "/system", label: "System Monitor", icon: Monitor },
   { href: "/files", label: "Files", icon: FolderOpen },
   { href: "/memory", label: "Memory", icon: Brain },

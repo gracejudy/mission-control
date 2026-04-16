@@ -1,27 +1,20 @@
 import { NextResponse } from "next/server";
+import { readFile, stat } from "fs/promises";
+import path from "path";
 
-const MISSION_CONTROL_URL =
-  "https://raw.githubusercontent.com/gracejudy/judy-brain/main/MISSION-CONTROL.md";
+const MISSION_FILE = path.join(
+  process.env.HOME ?? "/Users/judy",
+  ".openclaw/workspace/MISSION-CONTROL.md"
+);
 
 export async function GET() {
   try {
-    const res = await fetch(MISSION_CONTROL_URL, {
-      cache: "no-store",
-      headers: {
-        "Cache-Control": "no-cache",
-      },
-    });
+    const [content, fileStat] = await Promise.all([
+      readFile(MISSION_FILE, "utf-8"),
+      stat(MISSION_FILE),
+    ]);
 
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: `GitHub fetch failed: ${res.status} ${res.statusText}` },
-        { status: 502 }
-      );
-    }
-
-    const content = await res.text();
-    const lastModified = res.headers.get("last-modified") ?? null;
-
+    const lastModified = fileStat.mtime.toISOString();
     return NextResponse.json({ content, lastModified });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
