@@ -28,11 +28,13 @@ import {
   GitFork,
   SquareTerminal,
   History,
+  Target,
 } from "lucide-react";
 import { getAgentDisplayName } from "@/config/branding";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/mission", label: "Mission", icon: Target, highlight: true },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/office", label: "🎮 Office", icon: Gamepad2, highlight: true },
   { href: "/actions", label: "Quick Actions", icon: Zap },
