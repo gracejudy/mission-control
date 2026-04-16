@@ -14,23 +14,37 @@ export async function GET() {
     const cpuCount = os.cpus().length;
     const cpu = Math.min(Math.round((loadAvg / cpuCount) * 100), 100);
 
-    // RAM
+    // RAM — macOS vm_stat for accurate "available" memory (includes inactive/purgeable)
     const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const usedMem = totalMem - freeMem;
+    let availableMem = os.freemem();
+    try {
+      const { stdout: vmOut } = await execAsync("vm_stat");
+      const pageSize = 16384; // macOS default page size (bytes)
+      const getPages = (label: string) => {
+        const m = vmOut.match(new RegExp(`${label}:\\s+(\\d+)`));
+        return m ? parseInt(m[1]) : 0;
+      };
+      const freePages = getPages("Pages free");
+      const inactivePages = getPages("Pages inactive");
+      const purgeablePages = getPages("Pages purgeable");
+      availableMem = (freePages + inactivePages + purgeablePages) * pageSize;
+    } catch {
+      // fallback to os.freemem()
+    }
+    const usedMem = totalMem - availableMem;
     const ram = {
       used: parseFloat((usedMem / 1024 / 1024 / 1024).toFixed(2)),
       total: parseFloat((totalMem / 1024 / 1024 / 1024).toFixed(2)),
     };
 
-    // Disk
+    // Disk — macOS uses df -g (no -BG flag)
     let diskUsed = 0;
     let diskTotal = 100;
     try {
-      const { stdout } = await execAsync("df -BG / | tail -1");
+      const { stdout } = await execAsync("df -g / | tail -1");
       const parts = stdout.trim().split(/\s+/);
-      diskTotal = parseInt(parts[1].replace("G", ""));
-      diskUsed = parseInt(parts[2].replace("G", ""));
+      diskTotal = parseInt(parts[1]);
+      diskUsed = parseInt(parts[2]);
     } catch (error) {
       console.error("Failed to get disk stats:", error);
     }

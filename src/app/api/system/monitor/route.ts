@@ -75,50 +75,54 @@ export async function GET() {
     const loadAvg = os.loadavg();
     const cpuUsage = Math.min(Math.round((loadAvg[0] / cpuCount) * 100), 100);
 
-    // ── RAM ──────────────────────────────────────────────────────────────────
+    // ── RAM — macOS vm_stat for accurate available memory ────────────────────
     const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const usedMem = totalMem - freeMem;
+    let availableMem = os.freemem();
+    try {
+      const { stdout: vmOut } = await execAsync("vm_stat");
+      const pageSize = 16384;
+      const getPages = (label: string) => {
+        const m = vmOut.match(new RegExp(`${label}:\\s+(\\d+)`));
+        return m ? parseInt(m[1]) : 0;
+      };
+      availableMem = (getPages("Pages free") + getPages("Pages inactive") + getPages("Pages purgeable")) * pageSize;
+    } catch { /* fallback to os.freemem() */ }
+    const freeMem = availableMem;
+    const usedMem = totalMem - availableMem;
 
-    // ── Disk ─────────────────────────────────────────────────────────────────
+    // ── Disk — macOS uses df -g (no -BG flag) ────────────────────────────────
     let diskTotal = 100;
     let diskUsed = 0;
     let diskFree = 100;
     try {
-      const { stdout } = await execAsync("df -BG / | tail -1");
+      const { stdout } = await execAsync("df -g / | tail -1");
       const parts = stdout.trim().split(/\s+/);
-      diskTotal = parseInt(parts[1].replace("G", ""));
-      diskUsed = parseInt(parts[2].replace("G", ""));
-      diskFree = parseInt(parts[3].replace("G", ""));
+      diskTotal = parseInt(parts[1]);
+      diskUsed = parseInt(parts[2]);
+      diskFree = parseInt(parts[3]);
     } catch (error) {
       console.error("Failed to get disk stats:", error);
     }
     const diskPercent = (diskUsed / diskTotal) * 100;
 
-    // ── Network (real stats from /proc/net/dev) ───────────────────────────────
+    // ── Network (macOS: netstat -ib cumulative bytes, rate via delta) ─────────
     let network = { rx: 0, tx: 0 };
     try {
-      const { readFileSync } = await import('fs');
-      
-      function readNetStats(): { rx: number; tx: number; ts: number } {
-        const netDev = readFileSync('/proc/net/dev', 'utf-8');
-        const lines = netDev.trim().split('\n').slice(2);
-        let rx = 0, tx = 0;
-        for (const line of lines) {
-          const parts = line.trim().split(/\s+/);
-          const iface = parts[0].replace(':', '');
-          if (iface === 'lo') continue;
-          rx += parseInt(parts[1]) || 0;
-          tx += parseInt(parts[9]) || 0;
-        }
-        return { rx, tx, ts: Date.now() };
+      const { stdout: netOut } = await execAsync("netstat -ib 2>/dev/null");
+      const lines = netOut.trim().split('\n').slice(1); // skip header
+      let rxBytes = 0, txBytes = 0;
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        const iface = parts[0];
+        const network_col = parts[2] || '';
+        // Only count <Link#N> rows (one per physical interface), skip loopback
+        if (!network_col.startsWith('<Link#') || iface.startsWith('lo')) continue;
+        rxBytes += parseInt(parts[6]) || 0;  // Ibytes
+        txBytes += parseInt(parts[9]) || 0;  // Obytes
       }
-      
-      const current = readNetStats();
-      
-      // Use module-level cache for previous reading
-      if ((global as Record<string, unknown>).__netPrev) {
-        const prev = (global as Record<string, unknown>).__netPrev as { rx: number; tx: number; ts: number };
+      const current = { rx: rxBytes, tx: txBytes, ts: Date.now() };
+      const prev = (global as Record<string, unknown>).__netPrev as { rx: number; tx: number; ts: number } | undefined;
+      if (prev) {
         const dtSec = (current.ts - prev.ts) / 1000;
         if (dtSec > 0) {
           network = {
