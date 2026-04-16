@@ -105,20 +105,27 @@ export async function GET() {
     }
     const diskPercent = (diskUsed / diskTotal) * 100;
 
-    // ── Network (macOS: netstat -ib cumulative bytes, rate via delta) ─────────
+    // ── Network (macOS: netstat -ib cumulative bytes → 5s delta for rate) ──────
     let network = { rx: 0, tx: 0 };
     try {
       const { stdout: netOut } = await execAsync("netstat -ib 2>/dev/null");
       const lines = netOut.trim().split('\n').slice(1); // skip header
       let rxBytes = 0, txBytes = 0;
+      const MAC_RE = /^[0-9a-f]{1,2}(:[0-9a-f]{1,2}){5}$/i;
       for (const line of lines) {
         const parts = line.trim().split(/\s+/);
         const iface = parts[0];
         const network_col = parts[2] || '';
-        // Only count <Link#N> rows (one per physical interface), skip loopback
-        if (!network_col.startsWith('<Link#') || iface.startsWith('lo')) continue;
-        rxBytes += parseInt(parts[6]) || 0;  // Ibytes
-        txBytes += parseInt(parts[9]) || 0;  // Obytes
+        // Only count <Link#N> rows for physical interfaces (en*), skip loopback/virtual
+        if (!network_col.startsWith('<Link#') || !iface.startsWith('en')) continue;
+        // macOS netstat -ib: columns differ based on whether a MAC address is present
+        //   with MAC:    [Name, Mtu, Network, MAC,  Ipkts, Ierrs, Ibytes, Opkts, Oerrs, Obytes, Coll]
+        //   without MAC: [Name, Mtu, Network,       Ipkts, Ierrs, Ibytes, Opkts, Oerrs, Obytes, Coll]
+        const hasMac = MAC_RE.test(parts[3] || '');
+        const rxIdx = hasMac ? 6 : 5;
+        const txIdx = hasMac ? 9 : 8;
+        rxBytes += parseInt(parts[rxIdx]) || 0;
+        txBytes += parseInt(parts[txIdx]) || 0;
       }
       const current = { rx: rxBytes, tx: txBytes, ts: Date.now() };
       const prev = (global as Record<string, unknown>).__netPrev as { rx: number; tx: number; ts: number } | undefined;

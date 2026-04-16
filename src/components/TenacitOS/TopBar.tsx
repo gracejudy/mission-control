@@ -1,30 +1,46 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Search, Bell, User, Command } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Search, Bell, User, Command, ExternalLink } from "lucide-react";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { NotificationDropdown } from "@/components/NotificationDropdown";
+import { useRouter } from "next/navigation";
 
 export function TopBar() {
   const [showSearch, setShowSearch] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Command/Ctrl + K to open search
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setShowSearch(true);
       }
-      // Escape to close search
       if (e.key === "Escape" && showSearch) {
         setShowSearch(false);
+      }
+      if (e.key === "Escape" && showUserMenu) {
+        setShowUserMenu(false);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showSearch]);
+  }, [showSearch, showUserMenu]);
+
+  // Close user menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    if (showUserMenu) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showUserMenu]);
 
   return (
     <>
@@ -118,41 +134,121 @@ export function TopBar() {
           <NotificationDropdown />
 
           {/* User Area */}
-          <div className="flex items-center gap-2">
-            {/* Avatar */}
-            <div
+          <div ref={userMenuRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowUserMenu((v) => !v)}
+              className="flex items-center gap-2"
               style={{
-                width: "28px",
-                height: "28px",
-                borderRadius: "14px",
-                backgroundColor: "var(--accent)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "4px 6px",
+                borderRadius: "8px",
+                transition: "background 150ms",
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "var(--surface-elevated)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
             >
-              <span
+              {/* Avatar */}
+              <div
                 style={{
-                  fontFamily: "var(--font-heading)",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "var(--text-primary)",
+                  width: "28px",
+                  height: "28px",
+                  borderRadius: "14px",
+                  backgroundColor: "var(--accent)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
                 }}
               >
-                C
+                <span
+                  style={{
+                    fontFamily: "var(--font-heading)",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#000",
+                  }}
+                >
+                  J
+                </span>
+              </div>
+              {/* Name */}
+              <span
+                style={{
+                  fontFamily: "var(--font-body)",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: "var(--text-secondary)",
+                }}
+              >
+                주연
               </span>
-            </div>
-            {/* Name */}
-            <span
-              style={{
-                fontFamily: "var(--font-body)",
-                fontSize: "12px",
-                fontWeight: 500,
-                color: "var(--text-secondary)",
-              }}
-            >
-              Carlos
-            </span>
+            </button>
+
+            {/* Dropdown */}
+            {showUserMenu && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 8px)",
+                  right: 0,
+                  width: "180px",
+                  backgroundColor: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "10px",
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                  overflow: "hidden",
+                  zIndex: 100,
+                }}
+              >
+                {/* 주연 */}
+                <button
+                  onClick={() => {
+                    window.open("/about/kim_juyeon.html", "_blank");
+                    setShowUserMenu(false);
+                  }}
+                  className="flex items-center justify-between w-full px-4 py-3 text-left"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    borderBottom: "1px solid var(--border)",
+                    transition: "background 120ms",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "var(--surface-elevated)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+                >
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>주연</div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>김주연 소개</div>
+                  </div>
+                  <ExternalLink style={{ width: "13px", height: "13px", color: "var(--text-muted)", flexShrink: 0 }} />
+                </button>
+
+                {/* Judy */}
+                <button
+                  onClick={() => {
+                    router.push("/about");
+                    setShowUserMenu(false);
+                  }}
+                  className="flex items-center justify-between w-full px-4 py-3 text-left"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    transition: "background 120ms",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "var(--surface-elevated)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+                >
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>Judy 🦞</div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>에이전트 소개</div>
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
