@@ -1,0 +1,794 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { RefreshCw, Layers, TrendingUp, Sprout, BookOpen } from "lucide-react";
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+interface Seed {
+  id: string;
+  title: string;
+  episode: string;
+  pillar: string;
+  angle: string;
+  source: string;
+  status: string;
+}
+
+interface SeedsData {
+  seeds: Seed[];
+  total: number;
+  unprocessed: number;
+}
+
+interface CrawlerStatus {
+  active_products: number;
+  target: number;
+  progress_pct: number;
+  deadline: string | null;
+}
+
+interface PersonalBrandStatus {
+  milestone: string;
+  seeds_unprocessed: number;
+}
+
+interface ProjectsStatus {
+  "crawler-pipeline": CrawlerStatus;
+  "personal-brand": PersonalBrandStatus;
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────
+
+function ProgressBar({ pct }: { pct: number }) {
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "8px",
+        backgroundColor: "var(--border)",
+        borderRadius: "4px",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          width: `${Math.min(pct, 100)}%`,
+          height: "100%",
+          backgroundColor: "var(--accent)",
+          borderRadius: "4px",
+          transition: "width 600ms ease",
+        }}
+      />
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: "16px 20px",
+        borderRadius: "10px",
+        backgroundColor: "var(--card)",
+        border: "1px solid var(--border)",
+        minWidth: "140px",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "var(--text-muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          marginBottom: "6px",
+        }}
+      >
+        {label}
+      </p>
+      <p
+        style={{
+          fontSize: "24px",
+          fontWeight: 700,
+          color: "var(--text-primary)",
+          fontFamily: "var(--font-heading)",
+          letterSpacing: "-0.5px",
+        }}
+      >
+        {value}
+      </p>
+      {sub && (
+        <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+          {sub}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Tab: crawler-pipeline ──────────────────────────────────────────────────
+
+function CrawlerPipelineTab({ status }: { status: CrawlerStatus | null }) {
+  if (!status) {
+    return (
+      <div style={{ color: "var(--text-muted)", padding: "40px", textAlign: "center" }}>
+        <RefreshCw
+          style={{ width: "16px", height: "16px", animation: "spin 1s linear infinite", display: "inline-block" }}
+        />
+        <p style={{ marginTop: "8px" }}>로딩 중...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* Stats */}
+      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+        <StatCard label="활성 상품" value={status.active_products} sub={`목표 ${status.target}개`} />
+        <StatCard label="달성률" value={`${status.progress_pct}%`} sub="LIVE + REGISTERED" />
+        {status.deadline && (
+          <StatCard label="예상 완료일" value={status.deadline} sub="현재 속도 기준" />
+        )}
+      </div>
+
+      {/* Progress bar */}
+      <div
+        style={{
+          padding: "20px",
+          borderRadius: "10px",
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "12px",
+          }}
+        >
+          <span
+            style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}
+          >
+            500개 달성률
+          </span>
+          <span style={{ fontSize: "13px", color: "var(--accent)", fontWeight: 700 }}>
+            {status.active_products} / {status.target}
+          </span>
+        </div>
+        <ProgressBar pct={status.progress_pct} />
+        <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "8px" }}>
+          남은 수량: {status.target - status.active_products}개
+        </p>
+      </div>
+
+      {/* Note */}
+      <div
+        style={{
+          padding: "14px 18px",
+          borderRadius: "8px",
+          backgroundColor: "rgba(168, 85, 247, 0.06)",
+          border: "1px solid rgba(168, 85, 247, 0.2)",
+          fontSize: "13px",
+          color: "var(--text-secondary)",
+        }}
+      >
+        병목: collect 단계 (43.5초/개 sleep — 쿠팡 차단 방지용). 현재 MAX_COLLECT_PER_DAY: 10개.
+      </div>
+    </div>
+  );
+}
+
+// ── Tab: judy-ops ──────────────────────────────────────────────────────────
+
+function JudyOpsTab({ status }: { status: CrawlerStatus | null }) {
+  if (!status) {
+    return (
+      <div style={{ color: "var(--text-muted)", padding: "40px", textAlign: "center" }}>
+        로딩 중...
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* 1차 목표 */}
+      <div
+        style={{
+          padding: "20px",
+          borderRadius: "10px",
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            marginBottom: "16px",
+          }}
+        >
+          1차 목표 — 파이프라인 규모화
+        </h3>
+        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "16px" }}>
+          <StatCard label="현재" value={status.active_products} sub="활성 상품 (LIVE+REG)" />
+          <StatCard label="목표" value="500개" />
+          <StatCard label="달성률" value={`${status.progress_pct}%`} />
+        </div>
+        <ProgressBar pct={status.progress_pct} />
+        {status.deadline && (
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "8px" }}>
+            예상 완료: {status.deadline}
+          </p>
+        )}
+      </div>
+
+      {/* 2차 목표 */}
+      <div
+        style={{
+          padding: "20px",
+          borderRadius: "10px",
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          opacity: 0.6,
+        }}
+      >
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: 700,
+            color: "var(--text-secondary)",
+            marginBottom: "8px",
+          }}
+        >
+          2차 목표 — 수익화
+        </h3>
+        <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+          목표: 월 순이익 500만원 — 1차 달성 후 전환
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Tab: personal-brand ────────────────────────────────────────────────────
+
+const MILESTONE_LABELS: Record<string, string> = {
+  M0: "준비 — 인프라 완성",
+  M1: "첫 판매 — 1건 (10만원)",
+  M2: "검증 — 누적 5건 (50만원)",
+  M3: "가속 — 누적 15건 (150만원)",
+  M4: "목표 — 누적 30건 (300만원)",
+};
+
+const MILESTONE_ORDER = ["M0", "M1", "M2", "M3", "M4"];
+
+const PILLAR_COLORS: Record<string, string> = {
+  P1: "#a855f7",
+  P2: "#3b82f6",
+  P3: "#10b981",
+  P4: "#f59e0b",
+  P5: "#ef4444",
+  P6: "#ec4899",
+};
+
+function PersonalBrandTab({
+  status,
+  seedsData,
+  seedsLoading,
+  seedsError,
+}: {
+  status: PersonalBrandStatus | null;
+  seedsData: SeedsData | null;
+  seedsLoading: boolean;
+  seedsError: string | null;
+}) {
+  const currentIdx = status ? MILESTONE_ORDER.indexOf(status.milestone) : 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* Milestones */}
+      <div
+        style={{
+          padding: "20px",
+          borderRadius: "10px",
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            marginBottom: "16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <TrendingUp style={{ width: "16px", height: "16px", color: "var(--accent)" }} />
+          마일스톤
+        </h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {MILESTONE_ORDER.map((m, idx) => {
+            const isActive = idx === currentIdx;
+            const isDone = idx < currentIdx;
+            return (
+              <div
+                key={m}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  backgroundColor: isActive
+                    ? "rgba(168, 85, 247, 0.08)"
+                    : "transparent",
+                  border: isActive
+                    ? "1px solid rgba(168, 85, 247, 0.3)"
+                    : "1px solid transparent",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: isDone
+                      ? "var(--text-muted)"
+                      : isActive
+                      ? "var(--accent)"
+                      : "var(--text-muted)",
+                    minWidth: "24px",
+                  }}
+                >
+                  {isDone ? "✓" : m}
+                </span>
+                <span
+                  style={{
+                    fontSize: "13px",
+                    color: isDone
+                      ? "var(--text-muted)"
+                      : isActive
+                      ? "var(--text-primary)"
+                      : "var(--text-muted)",
+                    fontWeight: isActive ? 600 : 400,
+                    textDecoration: isDone ? "line-through" : "none",
+                  }}
+                >
+                  {MILESTONE_LABELS[m]}
+                </span>
+                {isActive && (
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      color: "var(--accent)",
+                      backgroundColor: "rgba(168, 85, 247, 0.15)",
+                      padding: "2px 8px",
+                      borderRadius: "12px",
+                    }}
+                  >
+                    진행 중
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Content Seeds */}
+      <div
+        style={{
+          borderRadius: "10px",
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <Sprout style={{ width: "16px", height: "16px", color: "#10b981" }} />
+            콘텐츠 씨앗
+          </h3>
+          {seedsData && (
+            <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+              총 {seedsData.total}개 · 미가공 {seedsData.unprocessed}개
+            </span>
+          )}
+        </div>
+
+        {seedsLoading && !seedsData && (
+          <div
+            style={{
+              padding: "32px",
+              textAlign: "center",
+              color: "var(--text-muted)",
+              fontSize: "13px",
+            }}
+          >
+            <RefreshCw
+              style={{ width: "14px", height: "14px", animation: "spin 1s linear infinite", display: "inline-block", marginRight: "6px" }}
+            />
+            씨앗 로딩 중...
+          </div>
+        )}
+
+        {seedsError && (
+          <div style={{ padding: "20px", color: "#ef4444", fontSize: "13px" }}>
+            {seedsError}
+          </div>
+        )}
+
+        {seedsData && (
+          <div>
+            {seedsData.seeds.map((seed, idx) => {
+              const pillars = seed.pillar.match(/P\d/g) ?? [];
+              const angles = seed.angle.split(/\s*\/\s*/);
+              return (
+                <div
+                  key={seed.id}
+                  style={{
+                    padding: "16px 20px",
+                    borderBottom:
+                      idx < seedsData.seeds.length - 1
+                        ? "1px solid var(--border)"
+                        : "none",
+                  }}
+                >
+                  {/* Header row */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "10px",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "var(--accent)",
+                        backgroundColor: "rgba(168, 85, 247, 0.1)",
+                        padding: "2px 8px",
+                        borderRadius: "10px",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {seed.id}
+                    </span>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        color: "var(--text-primary)",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {seed.title}
+                    </p>
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        fontSize: "10px",
+                        color:
+                          seed.status === "미가공"
+                            ? "#f59e0b"
+                            : seed.status === "발행완료"
+                            ? "#10b981"
+                            : "var(--text-muted)",
+                        backgroundColor:
+                          seed.status === "미가공"
+                            ? "rgba(245, 158, 11, 0.1)"
+                            : seed.status === "발행완료"
+                            ? "rgba(16, 185, 129, 0.1)"
+                            : "rgba(255,255,255,0.04)",
+                        padding: "2px 8px",
+                        borderRadius: "10px",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {seed.status}
+                    </span>
+                  </div>
+
+                  {/* Pillar tags */}
+                  <div
+                    style={{ display: "flex", gap: "6px", marginBottom: "8px", flexWrap: "wrap" }}
+                  >
+                    {pillars.map((p) => (
+                      <span
+                        key={p}
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          color: PILLAR_COLORS[p] ?? "var(--text-muted)",
+                          backgroundColor: `${PILLAR_COLORS[p] ?? "#888"}1a`,
+                          padding: "2px 7px",
+                          borderRadius: "8px",
+                        }}
+                      >
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Angles */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    {angles.map((angle, i) => (
+                      <p
+                        key={i}
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--text-secondary)",
+                          paddingLeft: "8px",
+                          borderLeft: "2px solid var(--border)",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {angle.replace(/^[""]|[""]$/g, "")}
+                      </p>
+                    ))}
+                  </div>
+
+                  {/* Source */}
+                  <p
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--text-muted)",
+                      marginTop: "8px",
+                    }}
+                  >
+                    출처: {seed.source}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────────────
+
+type TabId = "crawler-pipeline" | "judy-ops" | "personal-brand";
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: "crawler-pipeline", label: "crawler-pipeline" },
+  { id: "judy-ops", label: "judy-ops" },
+  { id: "personal-brand", label: "personal-brand" },
+];
+
+export default function ProjectsPage() {
+  const [activeTab, setActiveTab] = useState<TabId>("personal-brand");
+  const [status, setStatus] = useState<ProjectsStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [seedsData, setSeedsData] = useState<SeedsData | null>(null);
+  const [seedsLoading, setSeedsLoading] = useState(false);
+  const [seedsError, setSeedsError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/projects/status", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? "Fetch failed");
+      setStatus(data);
+      setStatusError(null);
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : "Unknown error");
+    }
+  }, []);
+
+  const fetchSeeds = useCallback(async () => {
+    setSeedsLoading(true);
+    setSeedsError(null);
+    try {
+      const res = await fetch("/api/projects/personal-brand/seeds", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? "Fetch failed");
+      setSeedsData(data);
+    } catch (err) {
+      setSeedsError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setSeedsLoading(false);
+    }
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([fetchStatus(), fetchSeeds()]);
+    setRefreshing(false);
+  }, [fetchStatus, fetchSeeds]);
+
+  useEffect(() => {
+    fetchStatus();
+    fetchSeeds();
+  }, [fetchStatus, fetchSeeds]);
+
+  const crawlerStatus = status?.["crawler-pipeline"] ?? null;
+  const pbStatus = status?.["personal-brand"] ?? null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Header */}
+      <div
+        style={{
+          padding: "24px 24px 0 24px",
+          flexShrink: 0,
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "20px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Layers style={{ width: "20px", height: "20px", color: "var(--accent)" }} />
+            <h1
+              style={{
+                fontFamily: "var(--font-heading)",
+                fontSize: "24px",
+                fontWeight: 700,
+                letterSpacing: "-1px",
+                color: "var(--text-primary)",
+              }}
+            >
+              Projects
+            </h1>
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="새로고침"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "8px 14px",
+              borderRadius: "8px",
+              backgroundColor: "var(--card-elevated, var(--card))",
+              border: "1px solid var(--border)",
+              color: "var(--text-secondary)",
+              cursor: refreshing ? "not-allowed" : "pointer",
+              fontSize: "13px",
+              fontWeight: 500,
+              opacity: refreshing ? 0.6 : 1,
+              transition: "all 150ms ease",
+            }}
+          >
+            <RefreshCw
+              style={{
+                width: "14px",
+                height: "14px",
+                animation: refreshing ? "spin 1s linear infinite" : "none",
+              }}
+            />
+            새로고침
+          </button>
+        </div>
+
+        {/* Paper-tab row */}
+        <div style={{ display: "flex", gap: "0", alignItems: "flex-end" }}>
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  padding: "10px 20px",
+                  fontSize: "13px",
+                  fontWeight: isActive ? 700 : 500,
+                  color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+                  backgroundColor: isActive ? "var(--bg)" : "var(--card)",
+                  border: "1px solid var(--border)",
+                  borderBottom: isActive ? "1px solid var(--bg)" : "1px solid var(--border)",
+                  borderRadius: "8px 8px 0 0",
+                  cursor: "pointer",
+                  position: "relative",
+                  bottom: "-1px",
+                  transition: "all 150ms ease",
+                  marginRight: "4px",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tab content */}
+      <main
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "28px 32px",
+          maxWidth: "960px",
+          width: "100%",
+        }}
+      >
+        {statusError && (
+          <div
+            style={{
+              padding: "14px 18px",
+              borderRadius: "8px",
+              backgroundColor: "rgba(239, 68, 68, 0.08)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              fontSize: "13px",
+              color: "#ef4444",
+              marginBottom: "20px",
+            }}
+          >
+            상태 로드 실패: {statusError}
+          </div>
+        )}
+
+        {activeTab === "crawler-pipeline" && (
+          <CrawlerPipelineTab status={crawlerStatus} />
+        )}
+        {activeTab === "judy-ops" && <JudyOpsTab status={crawlerStatus} />}
+        {activeTab === "personal-brand" && (
+          <PersonalBrandTab
+            status={pbStatus}
+            seedsData={seedsData}
+            seedsLoading={seedsLoading}
+            seedsError={seedsError}
+          />
+        )}
+      </main>
+
+      {/* Spin keyframe */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
