@@ -150,8 +150,26 @@ export default function MissionPage() {
 
   useEffect(() => {
     fetchAll();
-    const interval = setInterval(fetchAll, 60000); // 1분 주기
-    return () => clearInterval(interval);
+
+    // 다음 새벽 1시까지 남은 ms 계산
+    function msUntil1AM(): number {
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(1, 0, 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+      return next.getTime() - now.getTime();
+    }
+
+    let daily: ReturnType<typeof setInterval>;
+    const initial = setTimeout(() => {
+      fetchAll();
+      daily = setInterval(fetchAll, 86400000); // 이후 24시간 주기
+    }, msUntil1AM());
+
+    return () => {
+      clearTimeout(initial);
+      clearInterval(daily);
+    };
   }, [fetchAll]);
 
   const formattedFetchedAt = fetchedAt
