@@ -55,7 +55,7 @@ function parseKoreanAmount(raw: string): number | null {
 
 // direction + baseline reference for known metric labels
 function metricConfig(label: string): { direction: "up" | "down"; baseline?: number } {
-  if (label.includes("개입")) return { direction: "down", baseline: 120 }; // 2hr baseline in minutes
+  if (label.includes("개입")) return { direction: "down", baseline: 420 }; // 7hr baseline in minutes
   if (label.includes("잔금") || label.includes("대출")) return { direction: "down" };
   return { direction: "up" };
 }
