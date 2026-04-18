@@ -150,6 +150,8 @@ export default function MissionPage() {
 
   useEffect(() => {
     fetchAll();
+    const interval = setInterval(fetchAll, 60000); // 1분 주기
+    return () => clearInterval(interval);
   }, [fetchAll]);
 
   const formattedFetchedAt = fetchedAt
