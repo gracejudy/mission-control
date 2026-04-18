@@ -4,41 +4,159 @@ import { useState, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { RefreshCw, Target, AlertTriangle } from "lucide-react";
+import type { FreedomMetric } from "../../api/mission/freedom/route";
+
+// Strip the "## Freedom 거리계" section from markdown to avoid duplication
+function stripFreedomSection(md: string): string {
+  return md.replace(/## Freedom 거리계[\s\S]*?(?=\n---|\n## )/m, "");
+}
+
+function barColor(progress: number): string {
+  if (progress >= 70) return "#22c55e";
+  if (progress >= 30) return "#eab308";
+  return "#ef4444";
+}
+
+function FreedomCard({ metric }: { metric: FreedomMetric }) {
+  const color = barColor(metric.progress);
+  const isDown = metric.direction === "down";
+
+  return (
+    <div
+      style={{
+        backgroundColor: "var(--card)",
+        border: "1px solid var(--border)",
+        borderRadius: "12px",
+        padding: "18px 20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+      }}
+    >
+      {/* Label + status */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span
+          style={{
+            fontSize: "12px",
+            fontWeight: 600,
+            color: "var(--text-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          {metric.label}
+        </span>
+        <span style={{ fontSize: "16px" }}>{metric.status}</span>
+      </div>
+
+      {/* Current value */}
+      <div>
+        <span
+          style={{
+            fontSize: "22px",
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            fontFamily: "var(--font-heading)",
+            letterSpacing: "-0.5px",
+          }}
+        >
+          {metric.current}
+        </span>
+        <span
+          style={{
+            fontSize: "13px",
+            color: "var(--text-muted)",
+            marginLeft: "8px",
+          }}
+        >
+          목표 {metric.target}
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <div
+          style={{
+            height: "6px",
+            borderRadius: "3px",
+            backgroundColor: "rgba(255,255,255,0.07)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${metric.progress}%`,
+              backgroundColor: color,
+              borderRadius: "3px",
+              transition: "width 600ms ease",
+            }}
+          />
+        </div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: "6px",
+            fontSize: "11px",
+            color: "var(--text-muted)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          <span style={{ color }}>{metric.progress.toFixed(1)}%</span>
+          <span>{isDown ? "낮을수록 좋음" : "목표 달성률"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function MissionPage() {
   const [content, setContent] = useState<string>("");
+  const [freedomMetrics, setFreedomMetrics] = useState<FreedomMetric[]>([]);
   const [lastModified, setLastModified] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMission = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/mission", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error ?? "Fetch failed");
-      }
-      setContent(data.content);
-      setLastModified(data.lastModified);
+      const [missionRes, freedomRes] = await Promise.all([
+        fetch("/api/mission", { cache: "no-store" }),
+        fetch("/api/mission/freedom", { cache: "no-store" }),
+      ]);
+
+      const missionData = await missionRes.json();
+      const freedomData = await freedomRes.json();
+
+      if (!missionRes.ok || missionData.error) throw new Error(missionData.error ?? "mission fetch failed");
+
+      setContent(missionData.content);
+      setLastModified(missionData.lastModified);
       setFetchedAt(new Date());
+
+      if (freedomRes.ok && !freedomData.error) {
+        setFreedomMetrics(freedomData.metrics ?? []);
+      }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      setError(msg);
+      setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchMission();
-  }, [fetchMission]);
+    fetchAll();
+  }, [fetchAll]);
 
   const formattedFetchedAt = fetchedAt
     ? fetchedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
     : null;
+
+  const strippedContent = content ? stripFreedomSection(content) : "";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -77,7 +195,7 @@ export default function MissionPage() {
         </div>
 
         <button
-          onClick={fetchMission}
+          onClick={fetchAll}
           disabled={loading}
           title="새로고침"
           style={{
@@ -161,14 +279,60 @@ export default function MissionPage() {
           </div>
         )}
 
-        {content && (
+        {/* Freedom 거리계 Cards */}
+        {freedomMetrics.length > 0 && (
+          <div style={{ marginBottom: "40px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                marginBottom: "16px",
+              }}
+            >
+              <span style={{ fontSize: "16px" }}>🚀</span>
+              <h2
+                style={{
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  color: "var(--accent)",
+                  letterSpacing: "-0.3px",
+                }}
+              >
+                Freedom 거리계
+              </h2>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, 1fr)",
+                gap: "12px",
+              }}
+            >
+              {freedomMetrics.map((metric) => (
+                <FreedomCard key={metric.label} metric={metric} />
+              ))}
+            </div>
+            <hr
+              style={{
+                border: "none",
+                borderTop: "1px solid var(--border)",
+                margin: "32px 0 0 0",
+              }}
+            />
+          </div>
+        )}
+
+        {/* Remaining markdown (Freedom section stripped) */}
+        {strippedContent && (
           <div className="mission-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{strippedContent}</ReactMarkdown>
           </div>
         )}
       </main>
 
-      {/* Spin keyframes */}
+      {/* Styles */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
