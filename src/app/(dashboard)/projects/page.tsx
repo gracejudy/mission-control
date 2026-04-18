@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { RefreshCw, Layers, TrendingUp, Sprout, BookOpen } from "lucide-react";
+import { RefreshCw, Layers, TrendingUp, Sprout, Monitor } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -419,7 +419,6 @@ function PersonalBrandTab({
           borderRadius: "10px",
           backgroundColor: "var(--card)",
           border: "1px solid var(--border)",
-          overflow: "hidden",
         }}
       >
         <div
@@ -474,58 +473,56 @@ function PersonalBrandTab({
         )}
 
         {seedsData && (
-          <div>
-            {seedsData.seeds.map((seed, idx) => {
+          <div className="seeds-list" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px", padding: "16px 20px" }}>
+            {seedsData.seeds.map((seed) => {
               const pillars = seed.pillar.match(/P\d/g) ?? [];
-              const angles = seed.angle.split(/\s*\/\s*/);
+              const angles = seed.angle.split(/\s*\/\s*/).filter(Boolean);
               return (
                 <div
                   key={seed.id}
+                  className="seeds-card"
                   style={{
-                    padding: "16px 20px",
-                    borderBottom:
-                      idx < seedsData.seeds.length - 1
-                        ? "1px solid var(--border)"
-                        : "none",
+                    padding: "18px 20px",
+                    borderRadius: "10px",
+                    backgroundColor: "var(--bg)",
+                    border: "1px solid var(--border)",
                   }}
                 >
-                  {/* Header row */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "10px",
-                      marginBottom: "8px",
-                    }}
-                  >
+                  {/* Top row: ID + status */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
                     <span
                       style={{
                         fontSize: "11px",
                         fontWeight: 700,
                         color: "var(--accent)",
                         backgroundColor: "rgba(168, 85, 247, 0.1)",
-                        padding: "2px 8px",
+                        padding: "3px 9px",
                         borderRadius: "10px",
                         whiteSpace: "nowrap",
-                        flexShrink: 0,
                       }}
                     >
                       {seed.id}
                     </span>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        color: "var(--text-primary)",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {seed.title}
-                    </p>
+                    {pillars.map((p) => (
+                      <span
+                        key={p}
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          color: PILLAR_COLORS[p] ?? "var(--text-muted)",
+                          backgroundColor: `${PILLAR_COLORS[p] ?? "#888"}1a`,
+                          padding: "3px 7px",
+                          borderRadius: "8px",
+                        }}
+                      >
+                        {p}
+                      </span>
+                    ))}
                     <span
                       style={{
                         marginLeft: "auto",
                         fontSize: "10px",
+                        fontWeight: 600,
                         color:
                           seed.status === "미가공"
                             ? "#f59e0b"
@@ -538,63 +535,103 @@ function PersonalBrandTab({
                             : seed.status === "발행완료"
                             ? "rgba(16, 185, 129, 0.1)"
                             : "rgba(255,255,255,0.04)",
-                        padding: "2px 8px",
+                        padding: "3px 9px",
                         borderRadius: "10px",
                         whiteSpace: "nowrap",
-                        flexShrink: 0,
                       }}
                     >
                       {seed.status}
                     </span>
                   </div>
 
-                  {/* Pillar tags */}
-                  <div
-                    style={{ display: "flex", gap: "6px", marginBottom: "8px", flexWrap: "wrap" }}
-                  >
-                    {pillars.map((p) => (
-                      <span
-                        key={p}
-                        style={{
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          color: PILLAR_COLORS[p] ?? "var(--text-muted)",
-                          backgroundColor: `${PILLAR_COLORS[p] ?? "#888"}1a`,
-                          padding: "2px 7px",
-                          borderRadius: "8px",
-                        }}
-                      >
-                        {p}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Angles */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    {angles.map((angle, i) => (
-                      <p
-                        key={i}
-                        style={{
-                          fontSize: "12px",
-                          color: "var(--text-secondary)",
-                          paddingLeft: "8px",
-                          borderLeft: "2px solid var(--border)",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {angle.replace(/^[""]|[""]$/g, "")}
-                      </p>
-                    ))}
-                  </div>
-
-                  {/* Source */}
+                  {/* Title */}
                   <p
                     style={{
-                      fontSize: "11px",
-                      color: "var(--text-muted)",
-                      marginTop: "8px",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                      color: "var(--text-primary)",
+                      lineHeight: 1.5,
+                      marginBottom: "12px",
                     }}
                   >
+                    {seed.title}
+                  </p>
+
+                  {/* Episode */}
+                  {seed.episode && (
+                    <div
+                      className="seeds-episode"
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: "8px",
+                        backgroundColor: "rgba(255,255,255,0.03)",
+                        border: "1px solid var(--border)",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      <p
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        에피소드
+                      </p>
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "var(--text-secondary)",
+                          lineHeight: 1.7,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "keep-all",
+                        }}
+                      >
+                        {seed.episode}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Angles */}
+                  {angles.length > 0 && (
+                    <div style={{ marginBottom: "10px" }}>
+                      <p
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        각도 (훅 아이디어)
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                        {angles.map((angle, i) => (
+                          <p
+                            key={i}
+                            style={{
+                              fontSize: "12px",
+                              color: "var(--text-secondary)",
+                              paddingLeft: "10px",
+                              borderLeft: "2px solid rgba(168, 85, 247, 0.4)",
+                              lineHeight: 1.6,
+                              wordBreak: "keep-all",
+                            }}
+                          >
+                            {angle.replace(/^[""]|[""]$/g, "").trim()}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Source */}
+                  <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
                     출처: {seed.source}
                   </p>
                 </div>
@@ -610,14 +647,136 @@ function PersonalBrandTab({
   );
 }
 
+// ── Tab: mission-board ────────────────────────────────────────────────────
+
+function MissionBoardTab() {
+  const [logs, setLogs] = useState<string[]>([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [logsError, setLogsError] = useState<string | null>(null);
+
+  const fetchLogs = useCallback(async () => {
+    setLogsLoading(true);
+    setLogsError(null);
+    try {
+      const res = await fetch("/api/logs/recent?service=mission-control&lines=5", { cache: "no-store" });
+      const data = await res.json();
+      if (data.error && data.lines?.length === 0) throw new Error(data.error);
+      setLogs(data.lines ?? []);
+    } catch (err) {
+      setLogsError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLogsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <div
+        style={{
+          borderRadius: "10px",
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <Monitor style={{ width: "16px", height: "16px", color: "var(--accent)" }} />
+            서버 로그 (최신 5개)
+          </h3>
+          <button
+            onClick={fetchLogs}
+            disabled={logsLoading}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "6px 12px",
+              borderRadius: "6px",
+              backgroundColor: "var(--surface-elevated)",
+              border: "1px solid var(--border)",
+              color: "var(--text-secondary)",
+              cursor: logsLoading ? "not-allowed" : "pointer",
+              fontSize: "12px",
+              fontWeight: 500,
+              opacity: logsLoading ? 0.5 : 1,
+            }}
+          >
+            <RefreshCw style={{ width: "12px", height: "12px", animation: logsLoading ? "spin 1s linear infinite" : "none" }} />
+            새로고침
+          </button>
+        </div>
+
+        {/* Log lines */}
+        <div
+          style={{
+            padding: "12px 0",
+            fontFamily: "var(--font-mono)",
+            fontSize: "12px",
+          }}
+        >
+          {logsLoading && logs.length === 0 && (
+            <p style={{ padding: "20px", color: "var(--text-muted)", textAlign: "center" }}>로딩 중...</p>
+          )}
+          {logsError && (
+            <p style={{ padding: "16px 20px", color: "var(--negative)", fontSize: "13px" }}>{logsError}</p>
+          )}
+          {!logsLoading && !logsError && logs.length === 0 && (
+            <p style={{ padding: "20px", color: "var(--text-muted)", textAlign: "center" }}>로그 없음</p>
+          )}
+          {logs.map((line, i) => (
+            <div
+              key={i}
+              style={{
+                padding: "8px 20px",
+                borderBottom: i < logs.length - 1 ? "1px solid var(--border)" : "none",
+                color: line.toLowerCase().includes("error") || line.toLowerCase().includes("err")
+                  ? "var(--negative)"
+                  : line.toLowerCase().includes("warn")
+                  ? "var(--warning)"
+                  : "var(--text-secondary)",
+                lineHeight: 1.6,
+                wordBreak: "break-all",
+              }}
+            >
+              {line}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────
 
-type TabId = "crawler-pipeline" | "judy-ops" | "personal-brand";
+type TabId = "crawler-pipeline" | "judy-ops" | "personal-brand" | "mission-board";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "crawler-pipeline", label: "crawler-pipeline" },
   { id: "judy-ops", label: "judy-ops" },
   { id: "personal-brand", label: "personal-brand" },
+  { id: "mission-board", label: "mission-board" },
 ];
 
 export default function ProjectsPage() {
@@ -689,8 +848,9 @@ export default function ProjectsPage() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Header */}
       <div
+        className="page-header"
         style={{
-          padding: "24px 24px 0 24px",
+          padding: "24px 32px 0 32px",
           flexShrink: 0,
           borderBottom: "1px solid var(--border)",
         }}
@@ -782,12 +942,14 @@ export default function ProjectsPage() {
 
       {/* Tab content */}
       <main
+        className="page-content"
         style={{
           flex: 1,
           overflowY: "auto",
           padding: "28px 32px",
-          maxWidth: "960px",
+          maxWidth: "1400px",
           width: "100%",
+          margin: "0 auto",
         }}
       >
         {statusError && (
@@ -818,6 +980,9 @@ export default function ProjectsPage() {
             seedsError={seedsError}
             sections={sectionsData}
           />
+        )}
+        {activeTab === "mission-board" && (
+          <MissionBoardTab />
         )}
       </main>
 

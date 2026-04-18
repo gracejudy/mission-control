@@ -453,3 +453,83 @@ code, pre, .font-mono {
   font-size: 12px;
   color: var(--warning);
 }
+
+/* ===================================================
+   Mobile Responsive — iPhone 14 Pro Max (430px)
+   PC-first: all overrides apply only on ≤768px
+   =================================================== */
+
+/* Mobile bottom nav: hidden on desktop */
+.mobile-nav {
+  display: none !important;
+}
+
+
+@media (max-width: 768px) {
+  /* Hide desktop left dock */
+  .dock {
+    display: none !important;
+  }
+
+  /* TopBar: span full width (no left dock offset) */
+  .top-bar {
+    left: 0 !important;
+    padding: 0 12px !important;
+  }
+
+  /* Hide search bar text button on mobile */
+  .top-bar-search {
+    display: none !important;
+  }
+
+  /* Hide status bar — too dense for mobile */
+  .status-bar {
+    display: none !important;
+  }
+
+  /* Main content area */
+  .tenacios-main {
+    margin-left: 0 !important;
+    margin-top: 48px !important;
+    margin-bottom: 60px !important;
+    padding: 0 !important;
+    min-height: calc(100vh - 48px - 60px) !important;
+  }
+
+  /* Page-level header & content */
+  .page-header {
+    padding: 12px 8px 0 8px !important;
+  }
+
+  .page-content {
+    padding: 12px 8px !important;
+  }
+
+  /* Show mobile bottom navigation */
+  .mobile-nav {
+    display: flex !important;
+  }
+
+  /* Content seeds: single column + compact padding on mobile */
+  .seeds-list {
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 4px 0 !important;
+    gap: 8px !important;
+  }
+
+  .seeds-card {
+    padding: 10px 10px !important;
+    border-radius: 8px !important;
+  }
+
+  .seeds-episode {
+    padding: 8px !important;
+  }
+
+  /* Scrollbar thinner on mobile */
+  ::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+}
