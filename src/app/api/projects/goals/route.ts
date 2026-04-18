@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
+import { readFile, readdir, access } from "fs/promises";
 import path from "path";
 
 const WORKSPACE = path.join(
   process.env.HOME ?? "/Users/judy",
   ".openclaw/workspace"
 );
+const PROJECTS_DIR = path.join(WORKSPACE, "projects");
 
 async function readFileSafe(filePath: string): Promise<string> {
   try {
@@ -15,140 +16,137 @@ async function readFileSafe(filePath: string): Promise<string> {
   }
 }
 
-function extractSection(content: string, heading: string): string {
-  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`(${escaped}[\\s\\S]*?)(?=\\n#{1,3} |$)`, "m");
-  const match = content.match(re);
-  return match ? match[1].trim() : "";
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function extractCrawlerStepsMarkdown(content: string): string {
-  // Extract 1차/2차 목표 sections from PROJECT_CONTEXT.md
-  const first = content.match(/### 1차 목표[^\n]*\n([\s\S]*?)(?=\n###|\n##|$)/);
-  const second = content.match(/### 2차 목표[^\n]*\n([\s\S]*?)(?=\n###|\n##|$)/);
+// ── Generic parsers ────────────────────────────────────────────────────────
 
-  const rows: string[] = [];
-  if (first) {
-    const targetMatch = first[1].match(/\*\*목표:\*\*\s*([^\n]+)/);
-    const deadlineMatch = first[1].match(/달성 예상일:\*\*\s*([^\n]+)/);
-    rows.push(
-      `| 1차 — 파이프라인 규모화 | ${targetMatch ? targetMatch[1].trim() : "500개"} | ${deadlineMatch ? deadlineMatch[1].trim() : "⬜ 미설정"} |`
+function extractFinalGoal(context: string): string {
+  // Pattern 1: **목표:** inline  (e.g. n8n-mastery)
+  const inline = context.match(/\*\*목표:\*\*\s*([^\n]+)/);
+  if (inline) return inline[1].trim();
+
+  // Pattern 2: ## 목표 section — first non-empty, non-table, non-heading line
+  const section = context.match(/## 목표\n([\s\S]*?)(?=\n## |\n---|\n#{1,2} |$)/);
+  if (section) {
+    const lines = section[1].split("\n").map((l) => l.trim());
+    const firstMeaningful = lines.find(
+      (l) => l && !l.startsWith("|") && !l.startsWith("#") && !l.startsWith("-")
     );
-  } else {
-    rows.push("| 1차 — 파이프라인 규모화 | 500개 | ⬜ 미설정 |");
+    if (firstMeaningful) return firstMeaningful.replace(/^\*+|\*+$/g, "").trim();
   }
-  if (second) {
-    const targetMatch = second[1].match(/\*\*목표:\*\*\s*([^\n]+)/);
-    const deadlineMatch = second[1].match(/달성 예상일:\*\*\s*([^\n]+)/);
-    rows.push(
-      `| 2차 — 수익화 | ${targetMatch ? targetMatch[1].trim() : "월 순이익 500만원"} | ${deadlineMatch ? deadlineMatch[1].trim() : "⬜ 미설정"} |`
+
+  return "";
+}
+
+function extractStepsMarkdown(context: string): string {
+  // Pattern 1: ### 단계별 마일스톤  table (personal-brand)
+  const m1 = context.match(/### 단계별 마일스톤\n([\s\S]*?)(?=\n---|\n#{1,3} |$)/);
+  if (m1 && m1[1].includes("|")) return m1[1].trim();
+
+  // Pattern 2: ## 목표 로드맵 → ### 1차 목표 / ### 2차 목표 (judy-ops)
+  const roadmap = context.match(/## 목표 로드맵\n([\s\S]*?)(?=\n---|\n## |$)/);
+  if (roadmap) {
+    const rows: string[] = [];
+    const phaseBlocks = roadmap[1].matchAll(
+      /### (\d차 목표[^\n]*)\n([\s\S]*?)(?=\n### \d차|\n## |$)/g
     );
-  } else {
-    rows.push("| 2차 — 수익화 | 월 순이익 500만원 | ⬜ 미설정 |");
-  }
-
-  return `| 단계 | 목표 | 달성기한 |\n|---|---|---|\n${rows.join("\n")}`;
-}
-
-function extractNextTasks(content: string): string {
-  // Extract "### 다음 작업" section from CURRENT_TASK.md
-  const match = content.match(/### 다음 작업[^\n]*\n([\s\S]*?)(?=\n###|\n##|$)/);
-  if (!match) return "";
-  return match[1].trim();
-}
-
-function extractPBMilestonesMarkdown(content: string): string {
-  // Extract milestone table from project_context.md
-  const match = content.match(/### 단계별 마일스톤\n([\s\S]*?)(?=\n---|\n##|$)/);
-  return match ? match[1].trim() : "";
-}
-
-function extractPBCurrentTasks(content: string): string {
-  const lines: string[] = [];
-
-  // Now section — unchecked items only
-  const nowMatch = content.match(/## Now[^\n]*\n([\s\S]*?)(?=\n##|$)/);
-  if (nowMatch) {
-    const nowLines = nowMatch[1]
-      .split("\n")
-      .filter((l) => l.match(/^-\s+\[ \]/));
-    if (nowLines.length > 0) {
-      lines.push("**Now (진행 중):**");
-      lines.push(...nowLines);
+    for (const block of phaseBlocks) {
+      const label = block[1].trim();
+      const body = block[2];
+      const target = (body.match(/\*\*목표:\*\*\s*([^\n]+)/) ?? [])[1]?.trim() ?? "";
+      const deadline = (body.match(/달성 예상일:\*\*\s*([^\n]+)/) ?? [])[1]?.trim() ?? "⬜ 미설정";
+      rows.push(`| ${label} | ${target} | ${deadline} |`);
+    }
+    if (rows.length > 0) {
+      return `| 단계 | 목표 | 달성기한 |\n|---|---|---|\n${rows.join("\n")}`;
     }
   }
 
-  // Next section — unchecked top-level items only
-  const nextMatch = content.match(/## Next[^\n]*\n([\s\S]*?)(?=\n##|$)/);
-  if (nextMatch) {
-    const nextLines = nextMatch[1]
-      .split("\n")
-      .filter((l) => l.match(/^-\s+\[ \]/));
-    if (nextLines.length > 0) {
-      if (lines.length > 0) lines.push("");
-      lines.push("**Next (예정):**");
-      lines.push(...nextLines);
-    }
-  }
-
-  // Blockers
-  const blockerMatch = content.match(/## Blockers[^\n]*\n([\s\S]*?)(?=\n##|$)/);
-  if (blockerMatch) {
-    const blockerLines = blockerMatch[1]
-      .split("\n")
-      .filter((l) => l.match(/^-\s+\[ \]/));
-    if (blockerLines.length > 0) {
-      if (lines.length > 0) lines.push("");
-      lines.push("**Blockers:**");
-      lines.push(...blockerLines);
-    }
-  }
-
-  return lines.join("\n");
+  return "";
 }
+
+function extractTasksMarkdown(task: string): string {
+  // Pattern 1: ### 다음 작업 (judy-ops style)
+  const m1 = task.match(/### 다음 작업[^\n]*\n([\s\S]*?)(?=\n###|\n##|$)/);
+  if (m1) return m1[1].trim();
+
+  // Pattern 2: ## Now + ## Next unchecked (personal-brand style)
+  const nowSection = task.match(/## Now[^\n]*\n([\s\S]*?)(?=\n##|$)/);
+  const nextSection = task.match(/## Next[^\n]*\n([\s\S]*?)(?=\n##|$)/);
+  if (nowSection || nextSection) {
+    const lines: string[] = [];
+    if (nowSection) {
+      const unchecked = nowSection[1].split("\n").filter((l) => l.match(/^-\s+\[ \]/));
+      if (unchecked.length) { lines.push("**Now:**"); lines.push(...unchecked); }
+    }
+    if (nextSection) {
+      const unchecked = nextSection[1].split("\n").filter((l) => l.match(/^-\s+\[ \]/));
+      if (unchecked.length) {
+        if (lines.length) lines.push("");
+        lines.push("**Next:**");
+        lines.push(...unchecked);
+      }
+    }
+    if (lines.length) return lines.join("\n");
+  }
+
+  // Pattern 3: ## 지금 해야 할 것 (n8n-mastery style)
+  const m3 = task.match(/## 지금 해야 할 것\n([\s\S]*?)(?=\n##|$)/);
+  if (m3) return m3[1].trim();
+
+  // Pattern 4: generic ## 다음 작업
+  const m4 = task.match(/## 다음 작업[^\n]*\n([\s\S]*?)(?=\n##|$)/);
+  if (m4) return m4[1].trim();
+
+  // Fallback: top 10 unchecked items in the file
+  const unchecked = task.match(/^- \[ \] .+/mg) ?? [];
+  return unchecked.slice(0, 10).join("\n");
+}
+
+// ── Scan and build all active projects ────────────────────────────────────
 
 export async function GET() {
   try {
-    const judyOpsContext = await readFileSafe(
-      path.join(WORKSPACE, "projects/judy-ops/PROJECT_CONTEXT.md")
-    );
-    const judyOpsTask = await readFileSafe(
-      path.join(WORKSPACE, "projects/judy-ops/CURRENT_TASK.md")
-    );
-    const pbContext = await readFileSafe(
-      path.join(WORKSPACE, "projects/personal-brand/project_context.md")
-    );
-    const pbTask = await readFileSafe(
-      path.join(WORKSPACE, "projects/personal-brand/CURRENT_TASK.md")
+    const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+
+    const results: Record<
+      string,
+      { finalGoal: string; stepsMarkdown: string; tasksMarkdown: string }
+    > = {};
+
+    await Promise.all(
+      entries
+        .filter((e) => e.isDirectory())
+        .map(async (e) => {
+          const dir = path.join(PROJECTS_DIR, e.name);
+          const [hasActive, hasContext, hasTask] = await Promise.all([
+            fileExists(path.join(dir, ".active")),
+            fileExists(path.join(dir, "PROJECT_CONTEXT.md")),
+            fileExists(path.join(dir, "CURRENT_TASK.md")),
+          ]);
+          if (!hasActive || !hasContext || !hasTask) return;
+
+          const [context, task] = await Promise.all([
+            readFileSafe(path.join(dir, "PROJECT_CONTEXT.md")),
+            readFileSafe(path.join(dir, "CURRENT_TASK.md")),
+          ]);
+
+          results[e.name] = {
+            finalGoal: extractFinalGoal(context),
+            stepsMarkdown: extractStepsMarkdown(context),
+            tasksMarkdown: extractTasksMarkdown(task),
+          };
+        })
     );
 
-    const crawlerSteps = extractCrawlerStepsMarkdown(judyOpsContext);
-    const judyOpsTasks = extractNextTasks(judyOpsTask);
-    const pbMilestones = extractPBMilestonesMarkdown(pbContext);
-    const pbTasks = extractPBCurrentTasks(pbTask);
-
-    return NextResponse.json({
-      "crawler-pipeline": {
-        finalGoal: "LIVE + REGISTERED 기준 500개 상품 Qoo10 등록",
-        stepsMarkdown: crawlerSteps,
-        tasksMarkdown: judyOpsTasks,
-      },
-      "judy-ops": {
-        finalGoal: "월 순이익 500만원 (1차: 파이프라인 500개 달성 후 전환)",
-        stepsMarkdown: crawlerSteps,
-        tasksMarkdown: judyOpsTasks,
-      },
-      "personal-brand": {
-        finalGoal: "누적 30건 (300만원) — M4 달성",
-        stepsMarkdown: pbMilestones,
-        tasksMarkdown: pbTasks,
-      },
-      "mission-board": {
-        finalGoal: "",
-        stepsMarkdown: "",
-        tasksMarkdown: "",
-      },
-    });
+    return NextResponse.json(results);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

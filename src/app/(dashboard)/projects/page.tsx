@@ -30,10 +30,11 @@ interface ProjectGoalData {
 }
 
 interface GoalsData {
-  "crawler-pipeline": ProjectGoalData;
-  "judy-ops": ProjectGoalData;
-  "personal-brand": ProjectGoalData;
-  "mission-board": ProjectGoalData;
+  [projectId: string]: ProjectGoalData;
+}
+
+interface ProjectInfo {
+  id: string;
 }
 
 interface CrawlerStatus {
@@ -259,9 +260,9 @@ function GoalTemplate({ goal }: { goal: ProjectGoalData | null }) {
   );
 }
 
-// ── Tab: crawler-pipeline ──────────────────────────────────────────────────
+// ── Extra: crawler-pipeline ────────────────────────────────────────────────
 
-function CrawlerPipelineTab({ status, sections, goal }: { status: CrawlerStatus | null; sections: Record<string, string> | null; goal: ProjectGoalData | null }) {
+function CrawlerPipelineExtra({ status, sections }: { status: CrawlerStatus | null; sections: Record<string, string> | null }) {
   if (!status) {
     return (
       <div style={{ color: "var(--text-muted)", padding: "40px", textAlign: "center" }}>
@@ -275,7 +276,6 @@ function CrawlerPipelineTab({ status, sections, goal }: { status: CrawlerStatus 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <GoalTemplate goal={goal} />
       {/* Stats */}
       <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
         <StatCard label="활성 상품" value={status.active_products} sub={`목표 ${status.target}개`} />
@@ -337,9 +337,9 @@ function CrawlerPipelineTab({ status, sections, goal }: { status: CrawlerStatus 
   );
 }
 
-// ── Tab: judy-ops ──────────────────────────────────────────────────────────
+// ── Extra: judy-ops ────────────────────────────────────────────────────────
 
-function JudyOpsTab({ status, sections, goal }: { status: CrawlerStatus | null; sections: Record<string, string> | null; goal: ProjectGoalData | null }) {
+function JudyOpsExtra({ status, sections }: { status: CrawlerStatus | null; sections: Record<string, string> | null }) {
   if (!status) {
     return (
       <div style={{ color: "var(--text-muted)", padding: "40px", textAlign: "center" }}>
@@ -350,7 +350,6 @@ function JudyOpsTab({ status, sections, goal }: { status: CrawlerStatus | null; 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <GoalTemplate goal={goal} />
       {/* 1차 목표 */}
       <div
         style={{
@@ -415,7 +414,7 @@ function JudyOpsTab({ status, sections, goal }: { status: CrawlerStatus | null; 
   );
 }
 
-// ── Tab: personal-brand ────────────────────────────────────────────────────
+// ── Extra: personal-brand ──────────────────────────────────────────────────
 
 const MILESTONE_LABELS: Record<string, string> = {
   M0: "준비 — 인프라 완성",
@@ -436,26 +435,23 @@ const PILLAR_COLORS: Record<string, string> = {
   P6: "#ec4899",
 };
 
-function PersonalBrandTab({
+function PersonalBrandExtra({
   status,
   seedsData,
   seedsLoading,
   seedsError,
   sections,
-  goal,
 }: {
   status: PersonalBrandStatus | null;
   seedsData: SeedsData | null;
   seedsLoading: boolean;
   seedsError: string | null;
   sections: Record<string, string> | null;
-  goal: ProjectGoalData | null;
 }) {
   const currentIdx = status ? MILESTONE_ORDER.indexOf(status.milestone) : 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <GoalTemplate goal={goal} />
       {/* Milestones */}
       <div
         style={{
@@ -783,9 +779,9 @@ function PersonalBrandTab({
   );
 }
 
-// ── Tab: mission-board ────────────────────────────────────────────────────
+/// ── Extra: mission-board ───────────────────────────────────────────────────
 
-function MissionBoardTab({ goal }: { goal: ProjectGoalData | null }) {
+function MissionBoardExtra() {
   const [logs, setLogs] = useState<string[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
   const [logsError, setLogsError] = useState<string | null>(null);
@@ -809,7 +805,6 @@ function MissionBoardTab({ goal }: { goal: ProjectGoalData | null }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <GoalTemplate goal={goal} />
       <div
         style={{
           borderRadius: "10px",
@@ -905,19 +900,54 @@ function MissionBoardTab({ goal }: { goal: ProjectGoalData | null }) {
   );
 }
 
+// ── ProjectTab dispatcher ──────────────────────────────────────────────────
+
+function ProjectTab({
+  projectId,
+  goal,
+  crawlerStatus,
+  pbStatus,
+  seedsData,
+  seedsLoading,
+  seedsError,
+  sections,
+}: {
+  projectId: string;
+  goal: ProjectGoalData | null;
+  crawlerStatus: CrawlerStatus | null;
+  pbStatus: PersonalBrandStatus | null;
+  seedsData: SeedsData | null;
+  seedsLoading: boolean;
+  seedsError: string | null;
+  sections: Record<string, string> | null;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <GoalTemplate goal={goal} />
+      {projectId === "crawler-pipeline" && (
+        <CrawlerPipelineExtra status={crawlerStatus} sections={sections} />
+      )}
+      {projectId === "judy-ops" && (
+        <JudyOpsExtra status={crawlerStatus} sections={sections} />
+      )}
+      {projectId === "personal-brand" && (
+        <PersonalBrandExtra
+          status={pbStatus}
+          seedsData={seedsData}
+          seedsLoading={seedsLoading}
+          seedsError={seedsError}
+          sections={sections}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────
 
-type TabId = "crawler-pipeline" | "judy-ops" | "personal-brand" | "mission-board";
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: "crawler-pipeline", label: "crawler-pipeline" },
-  { id: "judy-ops", label: "judy-ops" },
-  { id: "personal-brand", label: "personal-brand" },
-  { id: "mission-board", label: "mission-board" },
-];
-
 export default function ProjectsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("personal-brand");
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [activeTab, setActiveTab] = useState<string>("");
   const [status, setStatus] = useState<ProjectsStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [seedsData, setSeedsData] = useState<SeedsData | null>(null);
@@ -967,6 +997,18 @@ export default function ProjectsPage() {
     }
   }, []);
 
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch("/api/projects/list", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || data.error) return;
+      setProjects(data.projects ?? []);
+      setActiveTab((prev) => prev || data.projects?.[0]?.id || "");
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
   const fetchGoals = useCallback(async () => {
     try {
       const res = await fetch("/api/projects/goals", { cache: "no-store" });
@@ -980,16 +1022,17 @@ export default function ProjectsPage() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([fetchStatus(), fetchSeeds(), fetchSections(), fetchGoals()]);
+    await Promise.all([fetchProjects(), fetchStatus(), fetchSeeds(), fetchSections(), fetchGoals()]);
     setRefreshing(false);
-  }, [fetchStatus, fetchSeeds, fetchSections, fetchGoals]);
+  }, [fetchProjects, fetchStatus, fetchSeeds, fetchSections, fetchGoals]);
 
   useEffect(() => {
+    fetchProjects();
     fetchStatus();
     fetchSeeds();
     fetchSections();
     fetchGoals();
-  }, [fetchStatus, fetchSeeds, fetchSections, fetchGoals]);
+  }, [fetchProjects, fetchStatus, fetchSeeds, fetchSections, fetchGoals]);
 
   const crawlerStatus = status?.["crawler-pipeline"] ?? null;
   const pbStatus = status?.["personal-brand"] ?? null;
@@ -1058,9 +1101,9 @@ export default function ProjectsPage() {
           </button>
         </div>
 
-        {/* Paper-tab row */}
+        {/* Paper-tab row — dynamic from /api/projects/list + mission-board */}
         <div style={{ display: "flex", gap: "0", alignItems: "flex-end" }}>
-          {TABS.map((tab) => {
+          {[...projects, { id: "mission-board" }].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
@@ -1083,7 +1126,7 @@ export default function ProjectsPage() {
                   fontFamily: "var(--font-mono)",
                 }}
               >
-                {tab.label}
+                {tab.id}
               </button>
             );
           })}
@@ -1118,23 +1161,20 @@ export default function ProjectsPage() {
           </div>
         )}
 
-        {activeTab === "crawler-pipeline" && (
-          <CrawlerPipelineTab status={crawlerStatus} sections={sectionsData} goal={goalsData?.["crawler-pipeline"] ?? null} />
-        )}
-        {activeTab === "judy-ops" && <JudyOpsTab status={crawlerStatus} sections={sectionsData} goal={goalsData?.["judy-ops"] ?? null} />}
-        {activeTab === "personal-brand" && (
-          <PersonalBrandTab
-            status={pbStatus}
+        {activeTab === "mission-board" ? (
+          <MissionBoardExtra />
+        ) : activeTab ? (
+          <ProjectTab
+            projectId={activeTab}
+            goal={goalsData?.[activeTab] ?? null}
+            crawlerStatus={crawlerStatus}
+            pbStatus={pbStatus}
             seedsData={seedsData}
             seedsLoading={seedsLoading}
             seedsError={seedsError}
             sections={sectionsData}
-            goal={goalsData?.["personal-brand"] ?? null}
           />
-        )}
-        {activeTab === "mission-board" && (
-          <MissionBoardTab goal={goalsData?.["mission-board"] ?? null} />
-        )}
+        ) : null}
       </main>
 
       <style>{`
