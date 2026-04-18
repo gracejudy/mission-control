@@ -207,7 +207,7 @@ function GoalTemplate({ goal }: { goal: ProjectGoalData | null }) {
                 marginBottom: "8px",
               }}
             >
-              단계별 목표 &amp; 달성기한
+              단계별 마일스톤
             </p>
             {goal.stepsMarkdown ? (
               <div className="mission-markdown">
