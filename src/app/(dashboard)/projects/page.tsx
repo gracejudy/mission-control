@@ -23,6 +23,19 @@ interface SeedsData {
   unprocessed: number;
 }
 
+interface ProjectGoalData {
+  finalGoal: string;
+  stepsMarkdown: string;
+  tasksMarkdown: string;
+}
+
+interface GoalsData {
+  "crawler-pipeline": ProjectGoalData;
+  "judy-ops": ProjectGoalData;
+  "personal-brand": ProjectGoalData;
+  "mission-board": ProjectGoalData;
+}
+
 interface CrawlerStatus {
   active_products: number;
   target: number;
@@ -128,9 +141,127 @@ function MissionSection({ content }: { content: string }) {
   );
 }
 
+// ── Goal Template ──────────────────────────────────────────────────────────
+
+function GoalTemplate({ goal }: { goal: ProjectGoalData | null }) {
+  if (!goal) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "8px" }}>
+      {/* Section 1: 목표 */}
+      <div
+        style={{
+          borderRadius: "10px",
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: "12px 18px",
+            borderBottom: "1px solid var(--border)",
+            fontSize: "12px",
+            fontWeight: 700,
+            color: "var(--accent)",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+          }}
+        >
+          목표
+        </div>
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: "14px" }}>
+          {/* 최종목표 */}
+          <div>
+            <p
+              style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                marginBottom: "6px",
+              }}
+            >
+              최종목표
+            </p>
+            {goal.finalGoal ? (
+              <p style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)" }}>
+                {goal.finalGoal}
+              </p>
+            ) : (
+              <p style={{ fontSize: "13px", color: "var(--text-muted)", fontStyle: "italic" }}>
+                —
+              </p>
+            )}
+          </div>
+          {/* 단계별 목표 */}
+          <div>
+            <p
+              style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                marginBottom: "8px",
+              }}
+            >
+              단계별 목표 &amp; 달성기한
+            </p>
+            {goal.stepsMarkdown ? (
+              <div className="mission-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{goal.stepsMarkdown}</ReactMarkdown>
+              </div>
+            ) : (
+              <p style={{ fontSize: "13px", color: "var(--text-muted)", fontStyle: "italic" }}>
+                —
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Section 2: 현재 작업 예정 */}
+      <div
+        style={{
+          borderRadius: "10px",
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: "12px 18px",
+            borderBottom: "1px solid var(--border)",
+            fontSize: "12px",
+            fontWeight: 700,
+            color: "var(--accent)",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+          }}
+        >
+          현재 작업 예정
+        </div>
+        <div style={{ padding: "16px 18px" }}>
+          {goal.tasksMarkdown ? (
+            <div className="mission-markdown">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{goal.tasksMarkdown}</ReactMarkdown>
+            </div>
+          ) : (
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", fontStyle: "italic" }}>
+              —
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Tab: crawler-pipeline ──────────────────────────────────────────────────
 
-function CrawlerPipelineTab({ status, sections }: { status: CrawlerStatus | null; sections: Record<string, string> | null }) {
+function CrawlerPipelineTab({ status, sections, goal }: { status: CrawlerStatus | null; sections: Record<string, string> | null; goal: ProjectGoalData | null }) {
   if (!status) {
     return (
       <div style={{ color: "var(--text-muted)", padding: "40px", textAlign: "center" }}>
@@ -144,6 +275,7 @@ function CrawlerPipelineTab({ status, sections }: { status: CrawlerStatus | null
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <GoalTemplate goal={goal} />
       {/* Stats */}
       <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
         <StatCard label="활성 상품" value={status.active_products} sub={`목표 ${status.target}개`} />
@@ -207,7 +339,7 @@ function CrawlerPipelineTab({ status, sections }: { status: CrawlerStatus | null
 
 // ── Tab: judy-ops ──────────────────────────────────────────────────────────
 
-function JudyOpsTab({ status, sections }: { status: CrawlerStatus | null; sections: Record<string, string> | null }) {
+function JudyOpsTab({ status, sections, goal }: { status: CrawlerStatus | null; sections: Record<string, string> | null; goal: ProjectGoalData | null }) {
   if (!status) {
     return (
       <div style={{ color: "var(--text-muted)", padding: "40px", textAlign: "center" }}>
@@ -218,6 +350,7 @@ function JudyOpsTab({ status, sections }: { status: CrawlerStatus | null; sectio
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <GoalTemplate goal={goal} />
       {/* 1차 목표 */}
       <div
         style={{
@@ -309,17 +442,20 @@ function PersonalBrandTab({
   seedsLoading,
   seedsError,
   sections,
+  goal,
 }: {
   status: PersonalBrandStatus | null;
   seedsData: SeedsData | null;
   seedsLoading: boolean;
   seedsError: string | null;
   sections: Record<string, string> | null;
+  goal: ProjectGoalData | null;
 }) {
   const currentIdx = status ? MILESTONE_ORDER.indexOf(status.milestone) : 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <GoalTemplate goal={goal} />
       {/* Milestones */}
       <div
         style={{
@@ -649,7 +785,7 @@ function PersonalBrandTab({
 
 // ── Tab: mission-board ────────────────────────────────────────────────────
 
-function MissionBoardTab() {
+function MissionBoardTab({ goal }: { goal: ProjectGoalData | null }) {
   const [logs, setLogs] = useState<string[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
   const [logsError, setLogsError] = useState<string | null>(null);
@@ -673,6 +809,7 @@ function MissionBoardTab() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <GoalTemplate goal={goal} />
       <div
         style={{
           borderRadius: "10px",
@@ -787,6 +924,7 @@ export default function ProjectsPage() {
   const [seedsLoading, setSeedsLoading] = useState(false);
   const [seedsError, setSeedsError] = useState<string | null>(null);
   const [sectionsData, setSectionsData] = useState<Record<string, string> | null>(null);
+  const [goalsData, setGoalsData] = useState<GoalsData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchStatus = useCallback(async () => {
@@ -829,17 +967,29 @@ export default function ProjectsPage() {
     }
   }, []);
 
+  const fetchGoals = useCallback(async () => {
+    try {
+      const res = await fetch("/api/projects/goals", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || data.error) return;
+      setGoalsData(data);
+    } catch {
+      // silently ignore — goals are supplementary
+    }
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([fetchStatus(), fetchSeeds(), fetchSections()]);
+    await Promise.all([fetchStatus(), fetchSeeds(), fetchSections(), fetchGoals()]);
     setRefreshing(false);
-  }, [fetchStatus, fetchSeeds, fetchSections]);
+  }, [fetchStatus, fetchSeeds, fetchSections, fetchGoals]);
 
   useEffect(() => {
     fetchStatus();
     fetchSeeds();
     fetchSections();
-  }, [fetchStatus, fetchSeeds, fetchSections]);
+    fetchGoals();
+  }, [fetchStatus, fetchSeeds, fetchSections, fetchGoals]);
 
   const crawlerStatus = status?.["crawler-pipeline"] ?? null;
   const pbStatus = status?.["personal-brand"] ?? null;
@@ -969,9 +1119,9 @@ export default function ProjectsPage() {
         )}
 
         {activeTab === "crawler-pipeline" && (
-          <CrawlerPipelineTab status={crawlerStatus} sections={sectionsData} />
+          <CrawlerPipelineTab status={crawlerStatus} sections={sectionsData} goal={goalsData?.["crawler-pipeline"] ?? null} />
         )}
-        {activeTab === "judy-ops" && <JudyOpsTab status={crawlerStatus} sections={sectionsData} />}
+        {activeTab === "judy-ops" && <JudyOpsTab status={crawlerStatus} sections={sectionsData} goal={goalsData?.["judy-ops"] ?? null} />}
         {activeTab === "personal-brand" && (
           <PersonalBrandTab
             status={pbStatus}
@@ -979,10 +1129,11 @@ export default function ProjectsPage() {
             seedsLoading={seedsLoading}
             seedsError={seedsError}
             sections={sectionsData}
+            goal={goalsData?.["personal-brand"] ?? null}
           />
         )}
         {activeTab === "mission-board" && (
-          <MissionBoardTab />
+          <MissionBoardTab goal={goalsData?.["mission-board"] ?? null} />
         )}
       </main>
 
