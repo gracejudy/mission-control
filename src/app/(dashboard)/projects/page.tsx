@@ -1103,7 +1103,7 @@ export default function ProjectsPage() {
 
         {/* Paper-tab row — dynamic from /api/projects/list + mission-board */}
         <div style={{ display: "flex", gap: "0", alignItems: "flex-end" }}>
-          {[...projects, { id: "mission-board" }].map((tab) => {
+          {projects.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
@@ -1161,9 +1161,7 @@ export default function ProjectsPage() {
           </div>
         )}
 
-        {activeTab === "mission-board" ? (
-          <MissionBoardExtra />
-        ) : activeTab ? (
+        {activeTab ? (
           <ProjectTab
             projectId={activeTab}
             goal={goalsData?.[activeTab] ?? null}
