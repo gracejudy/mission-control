@@ -168,7 +168,7 @@ git pull origin main
 - [x] 세 프로젝트 탭 전환 동작 (crawler-pipeline / judy-ops / personal-brand)
 - [x] personal-brand 탭에서 content_seeds.md 씨앗 목록 표시 (`/api/projects/personal-brand/seeds`)
 - [x] 탭 전환이 종이 탭 스타일로 렌더링됨 (선택 탭: 흰 배경 + 아래 테두리 없음)
-- [ ] 텔레그램 아가씨 보고: 미션보드 스크린샷 + URL
+- [x] 텔레그램 아가씨 보고: 미션보드 스크린샷 + URL (2026-04-19 04:04)
 
 ## 구현 완료 내역 (2026-04-17)
 
