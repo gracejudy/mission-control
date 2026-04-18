@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { RefreshCw, Layers, TrendingUp, Sprout, BookOpen } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -115,9 +117,20 @@ function StatCard({
   );
 }
 
+// ── Markdown Section Block ─────────────────────────────────────────────────
+
+function MissionSection({ content }: { content: string }) {
+  if (!content) return null;
+  return (
+    <div className="mission-markdown" style={{ marginTop: "24px" }}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
+  );
+}
+
 // ── Tab: crawler-pipeline ──────────────────────────────────────────────────
 
-function CrawlerPipelineTab({ status }: { status: CrawlerStatus | null }) {
+function CrawlerPipelineTab({ status, sections }: { status: CrawlerStatus | null; sections: Record<string, string> | null }) {
   if (!status) {
     return (
       <div style={{ color: "var(--text-muted)", padding: "40px", textAlign: "center" }}>
@@ -185,13 +198,16 @@ function CrawlerPipelineTab({ status }: { status: CrawlerStatus | null }) {
       >
         병목: collect 단계 (43.5초/개 sleep — 쿠팡 차단 방지용). 현재 MAX_COLLECT_PER_DAY: 10개.
       </div>
+
+      {/* pipeline-ops 현황 (from MISSION-CONTROL.md) */}
+      <MissionSection content={sections?.["pipeline-ops"] ?? ""} />
     </div>
   );
 }
 
 // ── Tab: judy-ops ──────────────────────────────────────────────────────────
 
-function JudyOpsTab({ status }: { status: CrawlerStatus | null }) {
+function JudyOpsTab({ status, sections }: { status: CrawlerStatus | null; sections: Record<string, string> | null }) {
   if (!status) {
     return (
       <div style={{ color: "var(--text-muted)", padding: "40px", textAlign: "center" }}>
@@ -258,6 +274,10 @@ function JudyOpsTab({ status }: { status: CrawlerStatus | null }) {
           목표: 월 순이익 500만원 — 1차 달성 후 전환
         </p>
       </div>
+
+      {/* KPI + judy-ops 현황 (from MISSION-CONTROL.md) */}
+      <MissionSection content={sections?.["general-executor-kpi"] ?? ""} />
+      <MissionSection content={sections?.["judyops-status"] ?? ""} />
     </div>
   );
 }
@@ -288,11 +308,13 @@ function PersonalBrandTab({
   seedsData,
   seedsLoading,
   seedsError,
+  sections,
 }: {
   status: PersonalBrandStatus | null;
   seedsData: SeedsData | null;
   seedsLoading: boolean;
   seedsError: string | null;
+  sections: Record<string, string> | null;
 }) {
   const currentIdx = status ? MILESTONE_ORDER.indexOf(status.milestone) : 0;
 
@@ -581,6 +603,9 @@ function PersonalBrandTab({
           </div>
         )}
       </div>
+
+      {/* personal-brand 마일스톤 (from MISSION-CONTROL.md) */}
+      <MissionSection content={sections?.["personal-brand-milestone"] ?? ""} />
     </div>
   );
 }
@@ -602,6 +627,7 @@ export default function ProjectsPage() {
   const [seedsData, setSeedsData] = useState<SeedsData | null>(null);
   const [seedsLoading, setSeedsLoading] = useState(false);
   const [seedsError, setSeedsError] = useState<string | null>(null);
+  const [sectionsData, setSectionsData] = useState<Record<string, string> | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchStatus = useCallback(async () => {
@@ -633,16 +659,28 @@ export default function ProjectsPage() {
     }
   }, []);
 
+  const fetchSections = useCallback(async () => {
+    try {
+      const res = await fetch("/api/mission/sections", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || data.error) return;
+      setSectionsData(data);
+    } catch {
+      // silently ignore — sections are supplementary
+    }
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([fetchStatus(), fetchSeeds()]);
+    await Promise.all([fetchStatus(), fetchSeeds(), fetchSections()]);
     setRefreshing(false);
-  }, [fetchStatus, fetchSeeds]);
+  }, [fetchStatus, fetchSeeds, fetchSections]);
 
   useEffect(() => {
     fetchStatus();
     fetchSeeds();
-  }, [fetchStatus, fetchSeeds]);
+    fetchSections();
+  }, [fetchStatus, fetchSeeds, fetchSections]);
 
   const crawlerStatus = status?.["crawler-pipeline"] ?? null;
   const pbStatus = status?.["personal-brand"] ?? null;
@@ -769,24 +807,109 @@ export default function ProjectsPage() {
         )}
 
         {activeTab === "crawler-pipeline" && (
-          <CrawlerPipelineTab status={crawlerStatus} />
+          <CrawlerPipelineTab status={crawlerStatus} sections={sectionsData} />
         )}
-        {activeTab === "judy-ops" && <JudyOpsTab status={crawlerStatus} />}
+        {activeTab === "judy-ops" && <JudyOpsTab status={crawlerStatus} sections={sectionsData} />}
         {activeTab === "personal-brand" && (
           <PersonalBrandTab
             status={pbStatus}
             seedsData={seedsData}
             seedsLoading={seedsLoading}
             seedsError={seedsError}
+            sections={sectionsData}
           />
         )}
       </main>
 
-      {/* Spin keyframe */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        .mission-markdown {
+          color: var(--text-primary);
+          font-family: var(--font-body);
+          font-size: 14px;
+          line-height: 1.75;
+        }
+        .mission-markdown h2 {
+          font-family: var(--font-heading);
+          font-size: 17px;
+          font-weight: 700;
+          color: var(--accent);
+          margin: 32px 0 12px 0;
+          letter-spacing: -0.3px;
+        }
+        .mission-markdown h3 {
+          font-family: var(--font-heading);
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 20px 0 8px 0;
+        }
+        .mission-markdown p {
+          color: var(--text-secondary);
+          margin: 0 0 12px 0;
+        }
+        .mission-markdown table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 16px 0;
+          font-size: 13px;
+        }
+        .mission-markdown th {
+          text-align: left;
+          padding: 8px 12px;
+          background: var(--card-elevated, var(--card));
+          color: var(--text-muted);
+          font-weight: 600;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          border-bottom: 1px solid var(--border);
+        }
+        .mission-markdown td {
+          padding: 9px 12px;
+          border-bottom: 1px solid var(--border);
+          color: var(--text-secondary);
+        }
+        .mission-markdown tr:last-child td {
+          border-bottom: none;
+        }
+        .mission-markdown tr:hover td {
+          background: rgba(255,255,255,0.02);
+        }
+        .mission-markdown code {
+          font-family: var(--font-mono);
+          font-size: 12px;
+          background: var(--card-elevated, rgba(255,255,255,0.06));
+          padding: 2px 6px;
+          border-radius: 4px;
+          color: var(--accent);
+        }
+        .mission-markdown ul, .mission-markdown ol {
+          padding-left: 20px;
+          margin: 8px 0 12px;
+          color: var(--text-secondary);
+        }
+        .mission-markdown li {
+          margin-bottom: 4px;
+        }
+        .mission-markdown hr {
+          border: none;
+          border-top: 1px solid var(--border);
+          margin: 28px 0;
+        }
+        .mission-markdown a {
+          color: var(--accent);
+          text-decoration: none;
+        }
+        .mission-markdown a:hover {
+          text-decoration: underline;
+        }
+        .mission-markdown strong {
+          color: var(--text-primary);
+          font-weight: 600;
         }
       `}</style>
     </div>

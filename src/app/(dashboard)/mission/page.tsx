@@ -11,6 +11,13 @@ function stripFreedomSection(md: string): string {
   return md.replace(/## Freedom 거리계[\s\S]*?(?=\n---|\n## )/m, "");
 }
 
+// Strip project-specific status sections (moved to Projects tab)
+function stripProjectSections(md: string): string {
+  return md
+    .replace(/## pipeline-ops 현황[\s\S]*?(?=\n---|\n## )/m, "")
+    .replace(/## general-executor 현황[\s\S]*?(?=\n---|\n## )/m, "");
+}
+
 function barColor(progress: number): string {
   if (progress >= 70) return "#22c55e";
   if (progress >= 30) return "#eab308";
@@ -176,7 +183,9 @@ export default function MissionPage() {
     ? fetchedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
     : null;
 
-  const strippedContent = content ? stripFreedomSection(content) : "";
+  const strippedContent = content
+    ? stripProjectSections(stripFreedomSection(content))
+    : "";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
