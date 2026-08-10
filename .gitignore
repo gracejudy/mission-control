@@ -53,3 +53,6 @@ next-env.d.ts
 
 # backup files
 *.bak
+
+# local dev server logs (launchd-generated)
+/logs/
