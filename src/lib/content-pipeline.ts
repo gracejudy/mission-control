@@ -28,6 +28,7 @@ export interface StatusEntry {
   status: IdeaStatus;
   requestedAt?: string;
   draftFile?: string;
+  evaluationFile?: string;
   publishedFile?: string;
   publishedUrl?: string;
   publishedAt?: string;
@@ -161,16 +162,17 @@ export async function queueDraftRequest(idea: RawIdea): Promise<{ requestedAt: s
     status: 'requested',
     requestedAt,
     draftFile: undefined,
+    evaluationFile: undefined,
   });
 
   return { requestedAt };
 }
 
-/** Best-effort delete of a StatusEntry's draft file. Missing file is not an error. */
-export async function deleteDraftFileIfExists(draftFile: string | undefined): Promise<void> {
-  if (!draftFile) return;
+/** Best-effort delete of a StatusEntry file (draftFile or evaluationFile). Missing file is not an error. */
+export async function deleteFileIfExists(relPath: string | undefined): Promise<void> {
+  if (!relPath) return;
   try {
-    await fs.unlink(resolveInPipelineDir(draftFile));
+    await fs.unlink(resolveInPipelineDir(relPath));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }

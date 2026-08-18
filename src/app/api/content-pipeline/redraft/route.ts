@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readIdeas, readStatus, queueDraftRequest, deleteDraftFileIfExists } from '@/lib/content-pipeline';
+import { readIdeas, readStatus, queueDraftRequest, deleteFileIfExists } from '@/lib/content-pipeline';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +26,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await deleteDraftFileIfExists(entry.draftFile);
+    await deleteFileIfExists(entry.draftFile);
+    await deleteFileIfExists(entry.evaluationFile);
     const { requestedAt } = await queueDraftRequest(idea);
     return NextResponse.json({ ideaId, status: 'requested', requestedAt });
   } catch (error) {

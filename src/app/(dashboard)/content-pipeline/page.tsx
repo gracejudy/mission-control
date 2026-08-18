@@ -17,6 +17,7 @@ import {
   Power,
   PowerOff,
   RotateCw,
+  Search,
 } from "lucide-react";
 
 interface AutomationState {
@@ -136,6 +137,7 @@ export default function ContentPipelinePage() {
   const [draftContent, setDraftContent] = useState("");
   const [draftLoading, setDraftLoading] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [evaluation, setEvaluation] = useState<{ filename: string; content: string } | null>(null);
 
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [publishUrl, setPublishUrl] = useState("");
@@ -232,11 +234,13 @@ export default function ContentPipelinePage() {
     setEditingId(idea.id);
     setPublishingId(null);
     setDraftLoading(true);
+    setEvaluation(null);
     try {
       const res = await fetch(`/api/content-pipeline/draft/${idea.id}`);
       if (res.ok) {
         const data = await res.json();
         setDraftContent(data.content ?? "");
+        setEvaluation(data.evaluation ?? null);
       }
     } finally {
       setDraftLoading(false);
@@ -566,6 +570,30 @@ export default function ContentPipelinePage() {
                   발행 완료로 표시
                 </PrimaryButton>
               </div>
+
+              {evaluation && (
+                <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Search className="w-3.5 h-3.5" style={{ color: "var(--info)" }} />
+                    <h4 className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+                      조사 방식 평가 (AI가 직접 밝힌 조사 과정·한계 — 편집 대상 아님)
+                    </h4>
+                  </div>
+                  <pre
+                    className="w-full p-3 rounded-lg text-xs leading-relaxed whitespace-pre-wrap"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-secondary)",
+                      fontFamily: "var(--font-body)",
+                      maxHeight: 240,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {evaluation.content}
+                  </pre>
+                </div>
+              )}
             </>
           )}
 
