@@ -115,6 +115,116 @@ export async function readIdeas(): Promise<RawIdea[]> {
   return parseIdeasMarkdown(raw);
 }
 
+export interface NewIdeaInput {
+  type: IdeaType;
+  title: string;
+  meta?: string;
+  extra?: Record<string, string>;
+}
+
+/** Thrown by appendIdea when the same title already exists under the same type. */
+export class DuplicateIdeaError extends Error {}
+
+/** Placeholder written for optional cells left blank, so every row keeps its full column count. */
+const CELL_PLACEHOLDER = '-';
+
+/** Returns a Korean reason string if `value` cannot be written into a markdown table cell, else null. */
+export function invalidCellValue(value: string): string | null {
+  if (value.includes('|')) return "'|' 문자는 표를 깨뜨려서 쓸 수 없습니다";
+  if (/[\r\n]/.test(value)) return '줄바꿈은 쓸 수 없습니다';
+  return null;
+}
+
+/** Next unused id for `type`, considering both ideas.md rows and leftover status.json keys. */
+export function nextIdeaId(type: IdeaType, ideas: RawIdea[], status: StatusMap): string {
+  let max = 0;
+  for (const id of [...ideas.map((i) => i.id), ...Object.keys(status)]) {
+    const match = id.match(/^([IBA])(\d+)$/);
+    if (!match || match[1] !== type) continue;
+    max = Math.max(max, parseInt(match[2], 10));
+  }
+  return `${type}${max + 1}`;
+}
+
+// Serializes ideas.md read-modify-write within this process, same rationale as
+// withStatusLock below: cross-process races (a human editing ideas.md in an
+// editor at the same instant) are an accepted, low-probability risk for a
+// single-user local tool.
+let ideasMutex: Promise<unknown> = Promise.resolve();
+
+function withIdeasLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = ideasMutex.then(fn, fn);
+  ideasMutex = result.catch(() => undefined);
+  return result;
+}
+
+/**
+ * Appends one row to the `## 타입 X —` table in ideas.md and returns the new idea.
+ * Only table rows are touched: the 빠른 수익화 기회 / 향후 전략 / 우선순위 sections and
+ * every table header/separator line are left byte-identical.
+ */
+export function appendIdea(input: NewIdeaInput): Promise<RawIdea> {
+  return withIdeasLock(async () => {
+    const raw = await fs.readFile(IDEAS_MD_PATH, 'utf-8');
+    const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+    const lines = raw.split(/\r?\n/);
+
+    const sectionStart = lines.findIndex((line) => {
+      const match = line.match(SECTION_RE);
+      return !!match && match[1] === input.type;
+    });
+    if (sectionStart === -1) {
+      throw new Error(`ideas.md에 "## 타입 ${input.type}" 섹션이 없습니다`);
+    }
+
+    // Last table line before the next `##` heading — new rows go directly after it.
+    let insertAt = -1;
+    for (let i = sectionStart + 1; i < lines.length; i++) {
+      if (HEADING_RE.test(lines[i])) break;
+      if (lines[i].trim().startsWith('|')) insertAt = i;
+    }
+    if (insertAt === -1) {
+      throw new Error(`ideas.md의 "## 타입 ${input.type}" 섹션에 표가 없습니다`);
+    }
+
+    const ideas = parseIdeasMarkdown(raw);
+    const title = input.title.trim();
+    const duplicate = ideas.find((i) => i.type === input.type && i.title === title);
+    if (duplicate) {
+      throw new DuplicateIdeaError(`같은 제목의 소재가 이미 있습니다 (${duplicate.id})`);
+    }
+
+    const status = await readStatus();
+    const id = nextIdeaId(input.type, ideas, status);
+
+    const cols = COLUMNS[input.type];
+    const cells = [id, title, input.meta ?? ''];
+    for (let i = 3; i < cols.length; i++) {
+      cells.push(input.extra?.[cols[i]] ?? '');
+    }
+    // Every column must be filled — parseIdeasMarkdown skips rows with fewer cells than COLUMNS.
+    const filled = cells.map((cell) => cell.trim() || CELL_PLACEHOLDER);
+
+    lines.splice(insertAt + 1, 0, `| ${filled.join(' | ')} |`);
+
+    const tmpPath = `${IDEAS_MD_PATH}.tmp`;
+    await fs.writeFile(tmpPath, lines.join(eol));
+    await fs.rename(tmpPath, IDEAS_MD_PATH);
+
+    const idea: RawIdea = {
+      id,
+      type: input.type,
+      title: filled[1],
+      meta: filled[2],
+      extra: {},
+    };
+    for (let i = 3; i < cols.length; i++) {
+      idea.extra[cols[i]] = filled[i];
+    }
+    return idea;
+  });
+}
+
 function timestampSlug(date: Date): string {
   return date.toISOString().replace(/[:.]/g, '-').slice(0, 19);
 }

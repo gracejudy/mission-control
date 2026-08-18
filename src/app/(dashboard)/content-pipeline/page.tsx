@@ -18,6 +18,8 @@ import {
   PowerOff,
   RotateCw,
   Search,
+  Plus,
+  X,
 } from "lucide-react";
 
 interface AutomationState {
@@ -52,6 +54,32 @@ const TYPE_META: Record<
   B: { label: "방법/핵 공유", sub: "제휴링크 포함", icon: Handshake, color: "var(--accent)" },
   A: { label: "숙소 후기", sub: "직접 경험 필요", icon: BedDouble, color: "var(--warning)" },
 };
+
+// 소재 추가 폼의 타입별 입력 필드. key 는 ideas.md 표의 컬럼명(서버 COLUMNS)과 1:1 대응 —
+// "title"/"meta" 는 최상위 필드로, 나머지는 extra 로 전송된다.
+const FORM_FIELDS: Record<
+  Idea["type"],
+  { key: string; label: string; placeholder: string; kind?: "keyword" | "competition" }[]
+> = {
+  I: [
+    { key: "title", label: "제목 아이디어", placeholder: "유심 vs 이심, 일본 여행 뭐가 더 낫나요" },
+    { key: "meta", label: "키워드", placeholder: "일본여행이심", kind: "keyword" },
+    { key: "volume", label: "검색량", placeholder: "2,520" },
+    { key: "competition", label: "경쟁", placeholder: "중간", kind: "competition" },
+  ],
+  B: [
+    { key: "title", label: "제목 아이디어", placeholder: "태국 여행 유심 싸게 사는 법" },
+    { key: "meta", label: "파트너", placeholder: "유심사" },
+    { key: "linkNeeded", label: "링크 필요", placeholder: "세시간전 유심사 링크" },
+  ],
+  A: [
+    { key: "title", label: "소재", placeholder: "다낭 OO호텔 숙박 후기" },
+    { key: "meta", label: "파트너", placeholder: "아고다" },
+    { key: "memo", label: "메모", placeholder: "2026-05 방문, 사진 있음" },
+  ],
+};
+
+const COMPETITION_OPTIONS = ["낮음", "중간", "높음"];
 
 const STATUS_META: Record<Idea["status"], { label: string; color: string }> = {
   idle: { label: "대기", color: "var(--text-muted)" },
@@ -148,6 +176,14 @@ export default function ContentPipelinePage() {
   const [automationBusy, setAutomationBusy] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
+  const [adding, setAdding] = useState(false);
+  const [newType, setNewType] = useState<Idea["type"]>("I");
+  const [newFields, setNewFields] = useState<Record<string, string>>({});
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupNote, setLookupNote] = useState<string | null>(null);
+
   const fetchIdeas = useCallback(async () => {
     try {
       const res = await fetch("/api/content-pipeline/ideas");
@@ -199,6 +235,93 @@ export default function ContentPipelinePage() {
       if (res.ok) setAutomation(await res.json());
     } finally {
       setAutomationBusy(false);
+    }
+  };
+
+  const openAddModal = () => {
+    setNewType("I");
+    setNewFields({});
+    setAddError(null);
+    setLookupNote(null);
+    setAdding(true);
+  };
+
+  const changeNewType = (type: Idea["type"]) => {
+    setNewType(type);
+    // 타입마다 컬럼이 달라서 이전 입력을 옮길 수 없다 — 제목만 유지하고 나머지는 비운다.
+    setNewFields((prev) => ({ title: prev.title ?? "" }));
+    setAddError(null);
+    setLookupNote(null);
+  };
+
+  const lookupKeyword = async () => {
+    const keyword = (newFields.meta ?? "").trim();
+    if (!keyword) return;
+    setLookupBusy(true);
+    setLookupNote(null);
+    try {
+      const res = await fetch("/api/content-pipeline/keyword-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLookupNote(data.error ?? "조회에 실패했습니다");
+        return;
+      }
+      if (!data.exact) {
+        setLookupNote(`"${data.keyword}" 정확 일치 결과가 없습니다 — 직접 입력해주세요`);
+        return;
+      }
+      setNewFields((prev) => ({
+        ...prev,
+        volume: data.exact.total.toLocaleString(),
+        competition: data.exact.comp || prev.competition || "",
+      }));
+      setLookupNote(
+        `조회됨 · PC ${data.exact.pc.toLocaleString()} / 모바일 ${data.exact.mobile.toLocaleString()}${
+          data.exact.sweet ? " · 스위트스팟 ★" : ""
+        }`
+      );
+    } catch {
+      setLookupNote("조회에 실패했습니다");
+    } finally {
+      setLookupBusy(false);
+    }
+  };
+
+  const submitNewIdea = async () => {
+    const title = (newFields.title ?? "").trim();
+    if (!title) {
+      setAddError("제목을 입력해주세요");
+      return;
+    }
+    const extra: Record<string, string> = {};
+    for (const field of FORM_FIELDS[newType]) {
+      if (field.key === "title" || field.key === "meta") continue;
+      extra[field.key] = (newFields[field.key] ?? "").trim();
+    }
+
+    setAddSubmitting(true);
+    setAddError(null);
+    try {
+      const res = await fetch("/api/content-pipeline/ideas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: newType, title, meta: (newFields.meta ?? "").trim(), extra }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAddError(data.error ?? "소재 등록에 실패했습니다");
+        return;
+      }
+      setAdding(false);
+      await fetchIdeas();
+    } catch {
+      setAddError("소재 등록에 실패했습니다");
+    } finally {
+      setAddSubmitting(false);
     }
   };
 
@@ -382,11 +505,16 @@ export default function ContentPipelinePage() {
       </div>
 
       {!loading && !error && (
-        <div className="flex flex-wrap gap-3 mb-8">
+        <div className="flex flex-wrap items-center gap-3 mb-8">
           <StatTile label="전체 소재" value={stats.total} />
           <StatTile label="발행완료" value={stats.published} />
           <StatTile label="진행중" value={stats.inProgress} sub="요청됨 + 초안" />
           <StatTile label="케이던스" value={stats.cadenceSub.includes("충족") ? "OK" : "확인 필요"} sub={stats.cadenceSub} />
+          <div className="ml-auto">
+            <PrimaryButton onClick={openAddModal} color="var(--accent)" icon={Plus}>
+              소재 추가
+            </PrimaryButton>
+          </div>
         </div>
       )}
 
@@ -520,6 +648,143 @@ export default function ContentPipelinePage() {
             </div>
           );
         })}
+
+      {adding && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0, 0, 0, 0.7)", backdropFilter: "blur(4px)" }}
+          onClick={() => setAdding(false)}
+        >
+          <div
+            className="rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5"
+            style={{ backgroundColor: "var(--card-elevated)", border: "1px solid var(--border-strong)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                소재 추가
+              </h3>
+              <button onClick={() => setAdding(false)} style={{ color: "var(--text-muted)" }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex gap-2 mb-4">
+              {(["I", "B", "A"] as Idea["type"][]).map((type) => {
+                const meta = TYPE_META[type];
+                const active = newType === type;
+                const Icon = meta.icon;
+                return (
+                  <button
+                    key={type}
+                    onClick={() => changeNewType(type)}
+                    className="flex-1 px-3 py-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5"
+                    style={{
+                      backgroundColor: active ? meta.color : "var(--surface)",
+                      color: active ? "#fff" : "var(--text-secondary)",
+                      border: active ? "none" : "1px solid var(--border)",
+                    }}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {type} · {meta.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+              {TYPE_META[newType].sub}
+            </p>
+
+            {FORM_FIELDS[newType].map((field) => (
+              <div key={field.key} className="mb-3">
+                <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>
+                  {field.label}
+                  {field.key === "title" && <span style={{ color: "var(--accent)" }}> *</span>}
+                </label>
+
+                {field.kind === "competition" ? (
+                  <select
+                    value={newFields[field.key] ?? ""}
+                    onChange={(e) => setNewFields((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                    className="w-full p-2 rounded-lg text-sm"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    <option value="">선택 안 함</option>
+                    {COMPETITION_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      value={newFields[field.key] ?? ""}
+                      onChange={(e) => setNewFields((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                      placeholder={field.placeholder}
+                      className="w-full p-2 rounded-lg text-sm"
+                      style={{
+                        backgroundColor: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        color: "var(--text-primary)",
+                      }}
+                    />
+                    {field.kind === "keyword" && (
+                      <button
+                        onClick={lookupKeyword}
+                        disabled={lookupBusy || !(newFields.meta ?? "").trim()}
+                        className="text-xs font-semibold px-3 rounded-lg inline-flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                        style={{
+                          backgroundColor: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          color: "var(--text-secondary)",
+                        }}
+                      >
+                        {lookupBusy ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Search className="w-3.5 h-3.5" />
+                        )}
+                        검색량 조회
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {field.kind === "keyword" && lookupNote && (
+                  <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                    {lookupNote}
+                  </p>
+                )}
+              </div>
+            ))}
+
+            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+              비워둔 항목은 <span className="font-mono">-</span> 로 기록됩니다. ID는 타입별로 자동
+              부여됩니다.
+            </p>
+
+            {addError && (
+              <p className="text-xs mb-3" style={{ color: "var(--error)" }}>
+                {addError}
+              </p>
+            )}
+
+            <PrimaryButton
+              onClick={submitNewIdea}
+              disabled={addSubmitting || !(newFields.title ?? "").trim()}
+              color="var(--accent)"
+              icon={Plus}
+            >
+              {addSubmitting ? "등록 중..." : "등록"}
+            </PrimaryButton>
+          </div>
+        </div>
+      )}
 
       {editingIdea && (
         <div
