@@ -3,12 +3,6 @@
 ## Fase 1: Fundamentos (Semana 1)
 > Mejorar lo que ya existe y añadir datos reales
 
-### 1.1 Activity Logger Real
-- [ ] Crear endpoint POST `/api/activities` para que Tenacitas registre acciones
-- [ ] Hook en OpenClaw para loguear automáticamente cada tool call
-- [ ] Campos: timestamp, type, description, status, duration, tokens_used
-- [ ] Retención: últimos 30 días
-
 ### 1.2 Integración con Cron Real
 - [ ] Leer cron jobs reales de OpenClaw (`cron list`)
 - [ ] Mostrar en calendario con próximas ejecuciones
@@ -85,11 +79,6 @@
 - [ ] Tipos de tareas (pie chart)
 - [ ] Tendencia semanal
 
-### 4.2 Cost Tracking
-- [ ] Estimación de coste por modelo
-- [ ] Coste acumulado diario/mensual
-- [ ] Alertas de gasto (opcional)
-
 ### 4.3 Performance Metrics
 - [ ] Tiempo promedio de respuesta
 - [ ] Tasa de éxito por tipo de tarea
@@ -111,24 +100,6 @@
 - [ ] Filtrar por fecha, canal, tipo
 - [ ] Preview del mensaje
 - [ ] Estado de entrega
-
-### 5.3 Session History ✅ (nuevo — 2026-02-21)
-- [x] **Lista de sesiones** → todas las sesiones de OpenClaw (main, cron, subagent, chats)
-- [x] **Tipos visuales** → badges con emoji 🦞 Main / 🕐 Cron / 🤖 Sub-agent / 💬 Direct
-- [x] **Token counter** → total tokens + barra de contexto (% usado) con color-coding
-- [x] **Model badge** → modelo mostrado (Sonnet 4.5, Opus 4.6, etc.)
-- [x] **Age display** → "2 hours ago", "3 days ago" con date-fns
-- [x] **Transcript viewer** → slide-in panel con mensajes del JSONL real
-- [x] **Bubbles UI** → user/assistant/tool_use/tool_result con diferentes estilos
-- [x] **Filter tabs** → All / Main / Cron / Sub-agents / Chats con contador
-- [x] **Búsqueda** → filtro por key/model
-- [x] **Stats cards** → Total sessions, Total tokens, Cron runs, Models used
-- [x] **Sidebar + Dock** → añadido a navegación (icono History)
-- **Archivos:**
-  - NEW: `src/app/api/sessions/route.ts`
-  - NEW: `src/app/(dashboard)/sessions/page.tsx`
-  - MODIFIED: `src/components/Sidebar.tsx` (añadida entrada Sessions)
-  - MODIFIED: `src/components/TenacitOS/Dock.tsx` (añadida entrada Sessions)
 
 ### 5.4 Notifications System ✅ (nuevo — 2026-02-20)
 - [x] **API de notificaciones** → `GET/POST/PATCH/DELETE /api/notifications`
@@ -152,13 +123,6 @@
 ## Fase 6: Configuración (Semana 6)
 > Admin del sistema
 
-### 6.1 Skills Manager
-- [ ] Lista de skills instalados
-- [ ] Ver SKILL.md de cada uno
-- [ ] Activar/desactivar
-- [ ] Instalar desde ClawHub
-- [ ] Actualizar skills
-
 ### 6.2 Integration Status
 - [ ] Estado de conexiones (Twitter, Gmail, etc.)
 - [ ] Última actividad por integración
@@ -176,12 +140,6 @@
 ## Fase 7: Real-time (Semana 7)
 > WebSockets y notificaciones live
 
-### 7.1 Live Activity Stream
-- [ ] WebSocket connection
-- [ ] Updates en tiempo real del activity feed
-- [ ] Indicador "Tenacitas está trabajando..."
-- [ ] Toast notifications
-
 ### 7.2 System Status
 - [ ] Heartbeat del agente
 - [ ] CPU/memoria del VPS
@@ -189,61 +147,8 @@
 
 ---
 
-## Fase 8: The Office 3D 🏢 (Semanas 8-10)
-> Entorno 3D navegable que simula una oficina virtual donde trabajan los agentes
-
-**Ver spec completa:** `ROADMAP-OFFICE-3D.md`
-
-### 8.1 MVP - Oficina Básica (Semana 8)
-- [ ] Sala 3D con React Three Fiber + 6 escritorios
-- [ ] Navegación WASD + mouse (fly mode)
-- [ ] Monitors mostrando estado: Working/Idle/Error
-- [ ] Click en escritorio → panel lateral con activity feed
-- [ ] Iluminación básica (día/noche)
-- [ ] Avatares simples (cubo/esfera con emoji del agente)
-
-### 8.2 Interactions & Ambient (Semana 9)
-- [ ] Avatares animados (tecleando, pensando, error)
-- [ ] Sub-agents aparecen como "visitantes" en la oficina
-- [ ] Trail visual entre parent y sub-agent
-- [ ] Efectos visuales (partículas success, humo error, beam heartbeat)
-- [ ] Sonido ambiental toggleable (teclas, notificaciones, lofi)
-- [ ] Click en objetos (archivador→Memory, pizarra→Roadmap, café→Mood)
-
-### 8.3 Multi-Floor Building (Semana 10)
-- [ ] 4 plantas navegables con ascensor:
-  - Planta 1: Main Office (agentes principales)
-  - Planta 2: Server Room (DBs, VPS, integrations)
-  - Planta 3: Archive (logs, memories históricas)
-  - Azotea: Control Tower (dashboard gigante)
-- [ ] Customization: temas (modern, retro, cyberpunk, matrix)
-- [ ] Modos especiales (Focus, God Mode, Cinematic)
-
-**Datos en tiempo real:**
-- `/api/agents/status` - estado de cada agente
-- `/api/activities` - activity feed
-- `/api/subagents` - sub-agentes activos
-- Polling cada 2-5 segundos
-
----
-
 ## Fase 9: Agent Intelligence (Semana 11)
-> Features experimentales y visualizaciones avanzadas (complementan "The Office")
-
-### 9.1 Agent Mood Dashboard
-- [ ] Widget de "estado de ánimo" basado en métricas recientes
-- [ ] Indicadores visuales: productivo, ocupado, idle, frustrado (muchos errores)
-- [ ] Streak counter: días consecutivos sin errores críticos
-- [ ] "Energy level" basado en tokens/hora
-- [ ] Emoji animado que cambia según el estado
-
-### 9.2 Token Economics
-- [ ] Vista detallada de consumo por modelo (Opus, Sonnet, Haiku, etc.)
-- [ ] Breakdown: input tokens vs output tokens vs cache
-- [ ] Comparativa: "Hoy vs ayer", "Esta semana vs la pasada"
-- [ ] Proyección de gasto mensual
-- [ ] Top 5 tareas que más tokens consumen
-- [ ] Efficiency score: output útil / tokens totales
+> Features experimentales y visualizaciones avanzadas
 
 ### 9.3 Knowledge Graph Viewer
 - [ ] Visualización de conceptos/entidades en MEMORY.md y brain
@@ -322,12 +227,6 @@
 - [ ] Click → preview/edit
 - [ ] Wow factor 📈
 
-### 11.2 Heatmaps Interactivos
-- [ ] Actividad por hora del día (24x7 grid)
-- [ ] Hover → detalles de ese slot
-- [ ] Click → filtrar activity feed a ese rango
-- [ ] Export a imagen
-
 ### 11.3 Sankey Diagrams
 - [ ] Flow de tokens: input → cache → output
 - [ ] Flow de tareas: type → status
@@ -367,7 +266,6 @@
 | Charts | Recharts (básicos) + D3.js (avanzados) |
 | Editor | Monaco Editor (code) + TipTap (markdown) |
 | Real-time | Server-Sent Events (SSE) o Socket.io |
-| 3D Graphics | Three.js o React Three Fiber |
 | Graphs/Networks | Cytoscape.js o Vis.js |
 | Animations | Framer Motion |
 | Storage | JSON files (actual) → SQLite (fase 2) → PostgreSQL (futuro multi-user) |
@@ -378,41 +276,30 @@
 
 ## Prioridad Recomendada
 
-### Tier 0: The Flagship 🚀 (Requested by Carlos)
-**Fase 8: The Office 3D** - Entorno 3D inmersivo donde visualizar agentes trabajando
-- Empezar por MVP (8.1) → 2 semanas
-- Luego Interactions (8.2) → 1 semana
-- Multi-Floor (8.3) es opcional/futuro
-
 ### Tier 1: Core Functionality (Must Have)
-1. **Fase 1** - Activity Logger Real → sin esto lo demás no tiene sentido
-2. **Fase 3** - Cron Manager completo → uso diario
-3. **Fase 2** - Memory Browser → gestión de conocimiento
+1. **Fase 3** - Cron Manager completo → uso diario
+2. **Fase 2** - Memory Browser → gestión de conocimiento
 
 ### Tier 2: High Value (Should Have)
-4. **Fase 5** - Command Terminal + Session History → interacción directa
-5. **Fase 9.4** - Quick Actions Hub → productividad inmediata
-6. **Fase 10.1** - Sub-Agent Dashboard → visibilidad de workflows
+3. **Fase 5** - Command Terminal → interacción directa
+4. **Fase 9.4** - Quick Actions Hub → productividad inmediata
+5. **Fase 10.1** - Sub-Agent Dashboard → visibilidad de workflows
 
 ### Tier 3: Intelligence & Insights (Nice to Have)
-7. **Fase 4** - Analytics básicos → métricas
-8. **Fase 9.2** - Token Economics → optimización de costes
-9. **Fase 9.6** - Smart Suggestions → IA que se auto-mejora
+6. **Fase 4** - Analytics básicos → métricas
+7. **Fase 9.6** - Smart Suggestions → IA que se auto-mejora
 
 ### Tier 4: Advanced Features (Wow Factor)
-10. **Fase 9.3** - Knowledge Graph → visualización avanzada
-11. **Fase 11.2** - Heatmaps Interactivos → análisis visual
-12. **Fase 10.2** - Agent Communication Graph → debugging multi-agent
+8. **Fase 9.3** - Knowledge Graph → visualización avanzada
+9. **Fase 10.2** - Agent Communication Graph → debugging multi-agent
 
 ### Tier 5: Polish & Experimental (Future)
-13. **Fase 7** - Real-time updates → UX premium
-14. **Fase 11.1** - 3D Workspace Explorer (no-office) → alternativa visual
-15. **Fase 12** - Collaboration → equipo/público
+10. **Fase 7** - Real-time updates → UX premium
+11. **Fase 11.1** - 3D Workspace Explorer → alternativa visual
+12. **Fase 12** - Collaboration → equipo/público
 
 ### Tier 6: Admin & Config (When Needed)
-16. **Fase 6** - Skills Manager + Config Editor → cuando sea necesario
-
-**Nota:** The Office 3D (Fase 8) es la feature flagship. Priorizar su MVP antes que otras fases avanzadas.
+13. **Fase 6** - Config Editor → cuando sea necesario
 
 ---
 
