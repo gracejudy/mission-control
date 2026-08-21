@@ -25,6 +25,14 @@ export interface RawIdea {
   extra: Record<string, string>;
 }
 
+export type ActionNeededType = 'add_link' | 'republish' | 'review';
+
+export interface ActionNeeded {
+  type: ActionNeededType;
+  reason: string;
+  flaggedAt: string;
+}
+
 export interface StatusEntry {
   status: IdeaStatus;
   requestedAt?: string;
@@ -34,6 +42,8 @@ export interface StatusEntry {
   publishedUrl?: string;
   publishedAt?: string;
   publishedTitle?: string;
+  /** 2026-08-21: 주간 성과 리뷰(workflow.md 4단계)에서 Claude가 판단해 세팅 — 사람이 미션보드에서 처리하면 지운다 */
+  actionNeeded?: ActionNeeded;
 }
 
 export type StatusMap = Record<string, StatusEntry>;

@@ -51,6 +51,12 @@ interface AutomationState {
   remainingSeconds: number | null;
 }
 
+interface ActionNeeded {
+  type: "add_link" | "republish" | "review";
+  reason: string;
+  flaggedAt: string;
+}
+
 interface Idea {
   id: string;
   type: "I" | "B" | "A";
@@ -63,7 +69,15 @@ interface Idea {
   publishedFile?: string;
   publishedUrl?: string;
   publishedAt?: string;
+  publishedTitle?: string;
+  actionNeeded?: ActionNeeded;
 }
+
+const ACTION_NEEDED_META: Record<ActionNeeded["type"], { label: string; color: string }> = {
+  add_link: { label: "🔗 링크 추가 필요", color: "var(--info)" },
+  republish: { label: "🔄 재발행 검토", color: "var(--accent)" },
+  review: { label: "👀 검토 필요", color: "var(--text-muted)" },
+};
 
 const TYPE_META: Record<
   Idea["type"],
@@ -251,6 +265,15 @@ export default function ContentPipelinePage() {
         // 조회 실패는 조용히 무시 — 섹션이 비어있는 채로 표시됨
       });
   }, []);
+
+  const clearActionNeeded = async (id: string) => {
+    try {
+      const res = await fetch(`/api/content-pipeline/action-needed/${id}`, { method: "DELETE" });
+      if (res.ok) await fetchIdeas();
+    } catch {
+      // 실패해도 조용히 무시 — 다음 fetchIdeas 폴링에서 여전히 보이면 사용자가 재시도 가능
+    }
+  };
 
   const copyLink = (link: AffiliateLink) => {
     navigator.clipboard.writeText(link.url).then(() => {
@@ -706,6 +729,31 @@ export default function ContentPipelinePage() {
                               {statusMeta.label}
                             </span>
                           </div>
+
+                          {idea.actionNeeded && (
+                            <div
+                              className="flex items-center justify-between gap-2 mb-2 px-2 py-1.5 rounded-lg text-xs"
+                              style={{
+                                backgroundColor: `color-mix(in srgb, ${ACTION_NEEDED_META[idea.actionNeeded.type].color} 12%, transparent)`,
+                                color: ACTION_NEEDED_META[idea.actionNeeded.type].color,
+                              }}
+                              title={idea.actionNeeded.reason}
+                            >
+                              <span className="font-medium truncate">
+                                {ACTION_NEEDED_META[idea.actionNeeded.type].label} — {idea.actionNeeded.reason}
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  clearActionNeeded(idea.id);
+                                }}
+                                className="flex-shrink-0 opacity-60 hover:opacity-100"
+                                title="처리 완료 — 표시 지우기"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
 
                           <div className="flex flex-wrap gap-1.5 mb-4">
                             <span
