@@ -10,6 +10,7 @@ export const STATUS_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'status.json');
 export const DRAFTS_DIR = path.join(CONTENT_PIPELINE_DIR, 'drafts');
 export const TASKS_DIR = path.join(CONTENT_PIPELINE_DIR, 'tasks');
 export const AUTOMATION_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'automation.json');
+export const AFFILIATE_LINKS_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'affiliate-links.json');
 export const WATCHER_SCRIPT_PATH = path.join(CONTENT_PIPELINE_DIR, 'scripts', 'queue-watcher.sh');
 export const AUTOMATION_DURATION_MS = 60 * 60 * 1000;
 
@@ -32,6 +33,7 @@ export interface StatusEntry {
   publishedFile?: string;
   publishedUrl?: string;
   publishedAt?: string;
+  publishedTitle?: string;
 }
 
 export type StatusMap = Record<string, StatusEntry>;
@@ -386,6 +388,31 @@ export function writeAutomation(patch: Partial<AutomationState>): Promise<Automa
     await saveAutomationUnlocked(next);
     return next;
   });
+}
+
+export interface AffiliateLink {
+  id: number;
+  label: string;
+  url: string;
+  program: string;
+  productTitle: string;
+  clicks: number;
+}
+
+export interface AffiliateLinksData {
+  updatedAt: string | null;
+  links: AffiliateLink[];
+}
+
+/** Reads affiliate-links.json (written by 3ha-links-update.py, run daily by morning-prep). Read-only — mission-control never writes this file. */
+export async function readAffiliateLinks(): Promise<AffiliateLinksData> {
+  try {
+    const data = await fs.readFile(AFFILIATE_LINKS_JSON_PATH, 'utf-8');
+    const parsed = JSON.parse(data);
+    return { updatedAt: parsed.updatedAt ?? null, links: parsed.links ?? [] };
+  } catch {
+    return { updatedAt: null, links: [] };
+  }
 }
 
 /** True if a process with this PID is currently running (best-effort — does not confirm it's actually our watcher). */

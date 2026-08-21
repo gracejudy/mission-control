@@ -20,7 +20,26 @@ import {
   Search,
   Plus,
   X,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Link2,
 } from "lucide-react";
+
+interface AffiliateLink {
+  id: number;
+  label: string;
+  url: string;
+  program: string;
+  productTitle: string;
+  clicks: number;
+}
+
+interface AffiliateLinksData {
+  updatedAt: string | null;
+  links: AffiliateLink[];
+}
 
 interface AutomationState {
   enabled: boolean;
@@ -169,12 +188,17 @@ export default function ContentPipelinePage() {
 
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [publishUrl, setPublishUrl] = useState("");
+  const [publishTitle, setPublishTitle] = useState("");
   const [publishText, setPublishText] = useState("");
   const [publishSubmitting, setPublishSubmitting] = useState(false);
 
   const [automation, setAutomation] = useState<AutomationState | null>(null);
   const [automationBusy, setAutomationBusy] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
+
+  const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLinksData | null>(null);
+  const [linksExpanded, setLinksExpanded] = useState(false);
+  const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
 
   const [adding, setAdding] = useState(false);
   const [newType, setNewType] = useState<Idea["type"]>("I");
@@ -218,6 +242,22 @@ export default function ContentPipelinePage() {
     const interval = setInterval(fetchAutomation, 10000);
     return () => clearInterval(interval);
   }, [fetchAutomation]);
+
+  useEffect(() => {
+    fetch("/api/content-pipeline/affiliate-links")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => data && setAffiliateLinks(data))
+      .catch(() => {
+        // 조회 실패는 조용히 무시 — 섹션이 비어있는 채로 표시됨
+      });
+  }, []);
+
+  const copyLink = (link: AffiliateLink) => {
+    navigator.clipboard.writeText(link.url).then(() => {
+      setCopiedLinkId(link.id);
+      setTimeout(() => setCopiedLinkId((cur) => (cur === link.id ? null : cur)), 1500);
+    });
+  };
 
   // 서버 폴링은 10초 간격이라 그 사이는 클라이언트에서 매초 직접 카운트다운
   useEffect(() => {
@@ -386,17 +426,23 @@ export default function ContentPipelinePage() {
   const openPublishForm = (idea: Idea) => {
     setPublishingId(idea.id);
     setPublishText(draftContent);
+    setPublishTitle(idea.title);
     setPublishUrl("");
   };
 
   const submitPublish = async (id: string) => {
-    if (!publishUrl || !publishText) return;
+    // 2026-08-21: URL+제목 필수, 본문은 선택(네이버 에디터 복사가 번거로우면 생략 가능)
+    if (!publishUrl || !publishTitle) return;
     setPublishSubmitting(true);
     try {
       const res = await fetch(`/api/content-pipeline/publish/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publishedText: publishText, url: publishUrl }),
+        body: JSON.stringify({
+          title: publishTitle,
+          publishedText: publishText || undefined,
+          url: publishUrl,
+        }),
       });
       if (res.ok) {
         setPublishingId(null);
@@ -516,6 +562,83 @@ export default function ContentPipelinePage() {
               소재 추가
             </PrimaryButton>
           </div>
+        </div>
+      )}
+
+      {affiliateLinks && affiliateLinks.links.length > 0 && (
+        <div
+          className="mb-8 rounded-xl overflow-hidden"
+          style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
+        >
+          <button
+            onClick={() => setLinksExpanded((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 px-4 py-3"
+          >
+            <div className="flex items-center gap-2">
+              <Link2 className="w-4 h-4" style={{ color: "var(--accent)" }} />
+              <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                내 제휴링크 ({affiliateLinks.links.length}개)
+              </span>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                — 글 쓸 때 바로 복사해서 쓰세요
+                {affiliateLinks.updatedAt &&
+                  ` · ${new Date(affiliateLinks.updatedAt).toLocaleString("ko-KR", {
+                    month: "numeric",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })} 갱신`}
+              </span>
+            </div>
+            {linksExpanded ? (
+              <ChevronUp className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+            ) : (
+              <ChevronDown className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+            )}
+          </button>
+          {linksExpanded && (
+            <div className="px-4 pb-4 flex flex-col gap-1.5">
+              {affiliateLinks.links.map((link) => (
+                <div
+                  key={link.id}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+                  style={{ backgroundColor: "var(--surface)" }}
+                >
+                  <span
+                    className="text-[11px] px-1.5 py-0.5 rounded flex-shrink-0"
+                    style={{ backgroundColor: "var(--card)", color: "var(--text-muted)" }}
+                  >
+                    {link.program}
+                  </span>
+                  <span className="flex-1 min-w-0 truncate" style={{ color: "var(--text-primary)" }}>
+                    {link.label}
+                  </span>
+                  <span className="font-mono text-xs flex-shrink-0" style={{ color: "var(--text-secondary)" }}>
+                    {link.url}
+                  </span>
+                  <button
+                    onClick={() => copyLink(link)}
+                    className="text-xs font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 flex-shrink-0"
+                    style={{
+                      backgroundColor: copiedLinkId === link.id ? "var(--success)" : "var(--card)",
+                      color: copiedLinkId === link.id ? "#fff" : "var(--text-secondary)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {copiedLinkId === link.id ? (
+                      <>
+                        <Check className="w-3 h-3" /> 복사됨
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" /> 복사
+                      </>
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -888,12 +1011,28 @@ export default function ContentPipelinePage() {
                 }}
               />
               <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>
-                최종 발행 텍스트 (네이버 에디터에서 복사한 전체 텍스트)
+                최종 발행 제목<span style={{ color: "var(--error)" }}> * 필수 (스타일 학습·성과추적 매칭용)</span>
+              </label>
+              <input
+                value={publishTitle}
+                onChange={(e) => setPublishTitle(e.target.value)}
+                placeholder="네이버에 실제로 올라간 제목 (필수)"
+                required
+                className="w-full p-2 rounded-lg text-sm mb-3"
+                style={{
+                  backgroundColor: "var(--surface)",
+                  border: publishTitle ? "1px solid var(--border)" : "1px solid var(--error)",
+                  color: "var(--text-primary)",
+                }}
+              />
+              <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>
+                최종 발행 텍스트 (네이버 에디터에서 복사한 전체 텍스트) — 선택, 생략 가능
               </label>
               <textarea
                 value={publishText}
                 onChange={(e) => setPublishText(e.target.value)}
                 rows={10}
+                placeholder="복사하기 번거로우면 비워둬도 됩니다"
                 className="w-full p-3 rounded-lg text-sm font-mono mb-3 leading-relaxed"
                 style={{
                   backgroundColor: "var(--surface)",
@@ -903,7 +1042,7 @@ export default function ContentPipelinePage() {
               />
               <PrimaryButton
                 onClick={() => submitPublish(editingIdea.id)}
-                disabled={publishSubmitting || !publishUrl || !publishText}
+                disabled={publishSubmitting || !publishUrl || !publishTitle}
                 color="var(--accent)"
                 icon={Send}
               >

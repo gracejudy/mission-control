@@ -16,25 +16,33 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
+    const title: string | undefined = body?.title;
     const publishedText: string | undefined = body?.publishedText;
     const url: string | undefined = body?.url;
 
-    if (!publishedText || !url) {
+    // 2026-08-21: URL과 제목은 필수(추적/스타일 학습 자료용), 본문은 선택(네이버 에디터 복사가
+    // 번거로울 때 생략 가능 — 성과분석 4단계는 제목만으로도 조회수 순위 매칭이 가능함)
+    if (!title || !url) {
       return NextResponse.json(
-        { error: 'Missing required fields: publishedText, url' },
+        { error: 'Missing required fields: title, url' },
         { status: 400 }
       );
     }
 
     const publishedRelPath = path.join('drafts', `${id}-published.txt`);
-    const publishedPath = resolveInPipelineDir(publishedRelPath);
-    await fs.mkdir(DRAFTS_DIR, { recursive: true });
-    await fs.writeFile(publishedPath, publishedText);
+    let savedPublishedFile: string | undefined;
+    if (publishedText) {
+      const publishedPath = resolveInPipelineDir(publishedRelPath);
+      await fs.mkdir(DRAFTS_DIR, { recursive: true });
+      await fs.writeFile(publishedPath, publishedText);
+      savedPublishedFile = publishedRelPath;
+    }
 
     const publishedAt = todayKST();
     const entry = await updateStatus(id, {
       status: 'published',
-      publishedFile: publishedRelPath,
+      publishedTitle: title,
+      ...(savedPublishedFile ? { publishedFile: savedPublishedFile } : {}),
       publishedUrl: url,
       publishedAt,
     });
