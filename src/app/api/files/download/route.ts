@@ -2,13 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { logActivity } from '@/lib/activities-db';
-
-const OPENCLAW_DIR = process.env.OPENCLAW_DIR || '/root/.openclaw';
-
-const WORKSPACE_MAP: Record<string, string> = {
-  workspace: path.join(OPENCLAW_DIR, 'workspace'),
-  'mission-control': path.join(OPENCLAW_DIR, 'workspace', 'mission-control'),
-};
+import { resolveWorkspacePath } from '@/lib/hermes-workspace';
 
 function getMimeType(filename: string): string {
   const ext = path.extname(filename).toLowerCase();
@@ -43,14 +37,14 @@ function getMimeType(filename: string): string {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const workspace = searchParams.get('workspace') || 'workspace';
+    const workspace = searchParams.get('workspace') || 'default';
     const filePath = searchParams.get('path') || '';
 
     if (!filePath) {
       return NextResponse.json({ error: 'Missing path parameter' }, { status: 400 });
     }
 
-    const base = WORKSPACE_MAP[workspace];
+    const base = resolveWorkspacePath(workspace);
     if (!base) {
       return NextResponse.json({ error: 'Unknown workspace' }, { status: 400 });
     }

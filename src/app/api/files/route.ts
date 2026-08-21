@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
-
-const OPENCLAW_DIR = process.env.OPENCLAW_DIR || "/root/.openclaw";
+import { resolveWorkspacePath } from "@/lib/hermes-workspace";
 
 // Files to show in the memory browser
-const ROOT_FILES = ["MEMORY.md", "SOUL.md", "USER.md", "AGENTS.md", "TOOLS.md", "IDENTITY.md"];
-const MEMORY_DIR = "memory";
+// Hermes keeps only SOUL.md at the profile root; MEMORY.md/USER.md live in memories/
+const ROOT_FILES = ["SOUL.md"];
+const MEMORY_DIR = "memories";
 
 interface FileNode {
   name: string;
@@ -96,15 +96,12 @@ function sanitizePath(requestedPath: string): string | null {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const workspace = searchParams.get("workspace") || "workspace";
+  const workspace = searchParams.get("workspace") || "default";
   const filePath = searchParams.get("path");
 
   try {
-    // Determine workspace path
-    const workspacePath = path.join(OPENCLAW_DIR, workspace);
-    
-    // Validate workspace exists
-    if (!(await fileExists(workspacePath))) {
+    const workspacePath = resolveWorkspacePath(workspace);
+    if (!workspacePath) {
       return NextResponse.json(
         { error: "Workspace not found" },
         { status: 404 }
@@ -148,7 +145,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { workspace = "workspace", path: filePath, content } = body;
+    const { workspace = "default", path: filePath, content } = body;
 
     if (!filePath || typeof content !== "string") {
       return NextResponse.json(
@@ -165,10 +162,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const workspacePath = path.join(OPENCLAW_DIR, workspace);
-    
-    // Validate workspace exists
-    if (!(await fileExists(workspacePath))) {
+    const workspacePath = resolveWorkspacePath(workspace);
+    if (!workspacePath) {
       return NextResponse.json(
         { error: "Workspace not found" },
         { status: 404 }

@@ -5,9 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
-
-const OPENCLAW_DIR = process.env.OPENCLAW_DIR || '/root/.openclaw';
-const WORKSPACE = path.join(OPENCLAW_DIR, 'workspace');
+import { resolveWorkspacePath } from '@/lib/hermes-workspace';
 
 interface SearchResult {
   file: string;
@@ -56,26 +54,26 @@ async function searchFile(filePath: string, query: string, displayPath: string):
   }
 }
 
-async function getFiles(): Promise<Array<{ path: string; display: string }>> {
+async function getFiles(workspacePath: string): Promise<Array<{ path: string; display: string }>> {
   const files: Array<{ path: string; display: string }> = [];
 
-  // Root workspace files
-  const rootFiles = ['MEMORY.md', 'SOUL.md', 'USER.md', 'AGENTS.md', 'TOOLS.md', 'IDENTITY.md', 'HEARTBEAT.md'];
+  // Profile root: just SOUL.md in Hermes
+  const rootFiles = ['SOUL.md'];
   for (const f of rootFiles) {
-    const full = path.join(WORKSPACE, f);
+    const full = path.join(workspacePath, f);
     try {
       await fs.access(full);
       files.push({ path: full, display: f });
     } catch {}
   }
 
-  // Memory directory
+  // memories/ directory (MEMORY.md, USER.md)
   try {
-    const memDir = path.join(WORKSPACE, 'memory');
+    const memDir = path.join(workspacePath, 'memories');
     const memFiles = await fs.readdir(memDir);
-    for (const f of memFiles.sort().reverse().slice(0, 30)) { // last 30 days
+    for (const f of memFiles.sort().reverse()) {
       if (f.endsWith('.md')) {
-        files.push({ path: path.join(memDir, f), display: `memory/${f}` });
+        files.push({ path: path.join(memDir, f), display: `memories/${f}` });
       }
     }
   } catch {}
@@ -86,13 +84,19 @@ async function getFiles(): Promise<Array<{ path: string; display: string }>> {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q')?.trim() || '';
+  const workspace = searchParams.get('workspace') || 'default';
 
   if (query.length < 2) {
     return NextResponse.json({ results: [], query });
   }
 
   try {
-    const files = await getFiles();
+    const workspacePath = resolveWorkspacePath(workspace);
+    if (!workspacePath) {
+      return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
+    }
+
+    const files = await getFiles(workspacePath);
     const results = await Promise.all(files.map((f) => searchFile(f.path, query, f.display)));
     const sorted = results
       .filter(Boolean)
