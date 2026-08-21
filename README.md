@@ -9,15 +9,11 @@ A real-time dashboard and control center for [OpenClaw](https://openclaw.ai) AI 
 ## Features
 
 - **📊 System Monitor** — Real-time VPS metrics (CPU, RAM, Disk, Network) + PM2/Docker status
-- **🤖 Agent Dashboard** — All agents, their sessions, token usage, model, and activity status
-- **💰 Cost Tracking** — Real cost analytics from OpenClaw sessions (SQLite)
 - **⏰ Cron Manager** — Visual cron manager with weekly timeline, run history, and manual triggers
-- **📋 Activity Feed** — Real-time log of agent actions with heatmap and charts
 - **🧠 Memory Browser** — Explore, search, and edit agent memory files
 - **📁 File Browser** — Navigate workspace files with preview and in-browser editing
 - **🔎 Global Search** — Full-text search across memory and workspace files
 - **🔔 Notifications** — Real-time notification center with unread badge
-- **🏢 Office 3D** — Interactive 3D office with one desk per agent (React Three Fiber)
 - **📺 Terminal** — Read-only terminal for safe status commands
 - **🔐 Auth** — Password-protected with rate limiting and secure cookie
 
@@ -29,21 +25,9 @@ A real-time dashboard and control center for [OpenClaw](https://openclaw.ai) AI 
 
 ![Dashboard](./docs/screenshots/dashboard.jpg)
 
-**Session History** — all OpenClaw sessions with token usage and context tracking
-
-![Sessions](./docs/screenshots/sessions.jpg)
-
-**Costs & Analytics** — daily cost trends and breakdown per agent
-
-![Costs](./docs/screenshots/costs.jpg)
-
 **System Monitor** — real-time CPU, RAM, Disk, and Network metrics
 
 ![System Monitor](./docs/screenshots/system.jpg)
-
-**Office 3D** — interactive 3D office with one voxel avatar per agent (React Three Fiber)
-
-![Office 3D](./docs/screenshots/office3d.jpg)
 
 ---
 
@@ -128,7 +112,6 @@ NEXT_PUBLIC_APP_TITLE=Mission Control
 cp data/cron-jobs.example.json data/cron-jobs.json
 cp data/activities.example.json data/activities.json
 cp data/notifications.example.json data/notifications.json
-cp data/configured-skills.example.json data/configured-skills.json
 cp data/tasks.example.json data/tasks.json
 ```
 
@@ -216,80 +199,6 @@ mission-control.yourdomain.com {
 
 All personal data stays in `.env.local` (gitignored). The `src/config/branding.ts` file reads from env vars — **never edit it directly** with your personal data.
 
-### Agent discovery
-
-Agents are auto-discovered from `openclaw.json` at startup. The `/api/agents` endpoint reads:
-
-```json
-{
-  "agents": {
-    "list": [
-      { "id": "main", "name": "...", "workspace": "...", "model": {...} },
-      { "id": "studio", "name": "...", "workspace": "..." }
-    ]
-  }
-}
-```
-
-Each agent can define its own visual appearance in `openclaw.json`:
-
-```json
-{
-  "id": "studio",
-  "name": "My Studio Agent",
-  "ui": {
-    "emoji": "🎬",
-    "color": "#E91E63"
-  }
-}
-```
-
-### Office 3D — agent positions
-
-The 3D office has default positions for up to 6 agents. To customize positions, names, and colors for your own agents, edit `src/components/Office3D/agentsConfig.ts`:
-
-```ts
-export const AGENTS: AgentConfig[] = [
-  {
-    id: "main",       // must match workspace ID
-    name: "...",      // display name (can also come from API)
-    emoji: "🤖",
-    position: [0, 0, 0],
-    color: "#FFCC00",
-    role: "Main Agent",
-  },
-  // add your sub-agents here
-];
-```
-
-### 3D Avatar models
-
-To add custom 3D avatars (Ready Player Me GLB format), place them in `public/models/`:
-
-```
-public/models/
-├── main.glb        ← main agent avatar
-├── studio.glb      ← workspace-studio agent
-└── infra.glb       ← workspace-infra agent
-```
-
-Filename must match the agent `id`. If no file is found, a colored sphere is shown as fallback.  
-See `public/models/README.md` for full instructions.
-
-### Cost tracking
-
-Usage is collected from OpenClaw's SQLite databases via a script:
-
-```bash
-# Collect once
-npx tsx scripts/collect-usage.ts
-
-# Auto-collect every hour (adds a cron job)
-./scripts/setup-cron.sh
-```
-
-See [docs/COST-TRACKING.md](./docs/COST-TRACKING.md) for details.
-
 ---
 
 ## Project Structure
@@ -300,19 +209,14 @@ mission-control/
 │   ├── app/
 │   │   ├── (dashboard)/      # Dashboard pages (protected)
 │   │   ├── api/              # API routes
-│   │   ├── login/            # Login page
-│   │   └── office/           # 3D office (unprotected route)
+│   │   └── login/            # Login page
 │   ├── components/
-│   │   ├── TenacitOS/        # OS-style UI shell (topbar, dock, status bar)
-│   │   └── Office3D/         # React Three Fiber 3D office
+│   │   └── TenacitOS/        # OS-style UI shell (topbar, dock, status bar)
 │   ├── config/
 │   │   └── branding.ts       # Branding constants (reads from env vars)
-│   └── lib/                  # Utilities (pricing, queries, activity logger...)
+│   └── lib/                  # Utilities (activities DB, queries...)
 ├── data/                     # JSON data files (gitignored — use .example versions)
 ├── docs/                     # Extended documentation
-├── public/
-│   └── models/               # GLB avatar models (add your own)
-├── scripts/                  # Setup and data collection scripts
 ├── .env.example              # Environment variable template
 └── middleware.ts             # Auth guard for all routes
 ```
@@ -346,12 +250,6 @@ openclaw status
 openclaw gateway start   # if not running
 ```
 
-**"Database not found" (cost tracking)**
-
-```bash
-npx tsx scripts/collect-usage.ts
-```
-
 **Build errors after pulling updates**
 
 ```bash
@@ -374,7 +272,6 @@ chmod +x scripts/*.sh
 |---|---|
 | Framework | Next.js 15 (App Router) |
 | UI | React 19 + Tailwind CSS v4 |
-| 3D | React Three Fiber + Drei |
 | Charts | Recharts |
 | Icons | Lucide React |
 | Database | SQLite (better-sqlite3) |

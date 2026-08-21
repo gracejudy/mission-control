@@ -24,7 +24,7 @@ export const BRANDING = {
   // Social media handles (optional - for workflow descriptions)
   twitterHandle: process.env.NEXT_PUBLIC_TWITTER_HANDLE || "@username",
 
-  // Company/organization name (shown in office 3D view)
+  // Company/organization name
   companyName: process.env.NEXT_PUBLIC_COMPANY_NAME || "MISSION CONTROL, INC.",
 
   // App title (shown in browser tab)
