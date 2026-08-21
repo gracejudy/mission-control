@@ -418,7 +418,8 @@ export default function ContentPipelinePage() {
     const inProgress = ideas.filter((i) => i.status === "requested" || i.status === "draft");
     const affiliatePublished = published.filter((i) => i.type === "B").length;
     const infoPublished = published.filter((i) => i.type === "I").length;
-    const infoNeeded = Math.max(affiliatePublished * 2 - infoPublished, 0);
+    // 2026-08-21: 케이던스 1:2 → 1:1로 변경(webinar-gap-analysis.md 결정)
+    const infoNeeded = Math.max(affiliatePublished - infoPublished, 0);
     return {
       total: ideas.length,
       published: published.length,
@@ -871,16 +872,18 @@ export default function ContentPipelinePage() {
           {publishingId === editingIdea.id && (
             <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
               <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>
-                네이버 발행 URL
+                네이버 발행 URL<span style={{ color: "var(--error)" }}> * 필수 (성과 추적용)</span>
               </label>
               <input
                 value={publishUrl}
                 onChange={(e) => setPublishUrl(e.target.value)}
-                placeholder="https://blog.naver.com/mesure/..."
+                placeholder="https://blog.naver.com/mesure/... (필수)"
+                required
+                type="url"
                 className="w-full p-2 rounded-lg text-sm mb-3"
                 style={{
                   backgroundColor: "var(--surface)",
-                  border: "1px solid var(--border)",
+                  border: publishUrl ? "1px solid var(--border)" : "1px solid var(--error)",
                   color: "var(--text-primary)",
                 }}
               />
