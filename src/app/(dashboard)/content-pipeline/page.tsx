@@ -564,6 +564,12 @@ export default function ContentPipelinePage() {
                               className="font-semibold text-sm leading-snug"
                               style={{ color: "var(--text-primary)" }}
                             >
+                              <span
+                                className="font-mono text-[11px] font-medium px-1.5 py-0.5 rounded mr-1.5"
+                                style={{ backgroundColor: "var(--surface)", color: "var(--text-muted)" }}
+                              >
+                                {idea.id}
+                              </span>
                               {idea.title}
                             </h3>
                             <span
@@ -799,7 +805,7 @@ export default function ContentPipelinePage() {
         >
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>
-              초안 편집 — {editingIdea.title}
+              초안 편집 — [{editingIdea.id}] {editingIdea.title}
             </h3>
             <button
               onClick={() => setEditingId(null)}
