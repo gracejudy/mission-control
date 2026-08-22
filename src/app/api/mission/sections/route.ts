@@ -4,14 +4,14 @@ import { MISSION_FILE } from "@/lib/mission-file";
 
 function extractSection(content: string, heading: string): string {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`${escaped}[\\s\\S]*?(?=\\n---[\\s\\S]|\\n## |$)`, "m");
+  const re = new RegExp(`${escaped}[\\s\\S]*?(?=\\n---[\\s\\S]|\\n## |$)`);
   const match = content.match(re);
   return match ? match[0].trim() : "";
 }
 
 function extractSubSection(content: string, heading: string): string {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`${escaped}[\\s\\S]*?(?=\\n### |\\n## |\\n---[\\s\\S]|$)`, "m");
+  const re = new RegExp(`${escaped}[\\s\\S]*?(?=\\n### |\\n## |\\n---[\\s\\S]|$)`);
   const match = content.match(re);
   return match ? match[0].trim() : "";
 }
