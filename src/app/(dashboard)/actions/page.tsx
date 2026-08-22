@@ -49,7 +49,7 @@ const ACTIONS: QuickAction[] = [
   {
     id: "restart-gateway",
     label: "Restart Gateway",
-    description: "systemctl로 gateway 서비스 재시작 시도 — 이 Mac에는 해당 서비스가 없어 항상 'not found'로 끝남",
+    description: "launchd로 등록된 Hermes gateway(ai.hermes.gateway*) 전체 재시작",
     icon: RotateCcw,
     color: "var(--warning, #f59e0b)",
     dangerous: true,

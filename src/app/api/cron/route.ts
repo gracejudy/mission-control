@@ -1,40 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execSync } from "child_process";
-import { readFileSync } from "fs";
+import { listAllCronJobs, findJobProfile, runHermesCron } from "@/lib/hermes-cron";
 
-const OPENCLAW_DIR = process.env.OPENCLAW_DIR || "/Users/judy/.openclaw";
-const EXEC_ENV = { ...process.env, HOME: "/Users/judy", PATH: "/usr/local/bin:/usr/bin:/bin" };
-
-// GET: List all cron jobs — read directly from filesystem (CLI unreliable in Next.js sandbox)
+// GET: List all cron jobs across every Hermes profile — read directly from
+// each profile's cron/jobs.json (fast, no CLI dependency for the common path).
 export async function GET() {
   try {
-    const raw = readFileSync(`${OPENCLAW_DIR}/cron/jobs.json`, "utf-8");
-    const data = JSON.parse(raw);
-    const jobs = (data.jobs || []).map((job: Record<string, unknown>) => ({
-      id: job.id,
-      agentId: job.agentId || "main",
-      name: job.name || "Unnamed",
-      enabled: job.enabled ?? true,
-      createdAtMs: job.createdAtMs,
-      updatedAtMs: job.updatedAtMs,
-      schedule: job.schedule,
-      sessionTarget: job.sessionTarget,
-      payload: job.payload,
-      delivery: job.delivery,
-      state: job.state,
-      // Derived fields for the UI
-      description: formatDescription(job),
-      scheduleDisplay: formatSchedule(job.schedule as Record<string, unknown>),
-      timezone: (job.schedule as Record<string, string>)?.tz || "UTC",
-      nextRun: (job.state as Record<string, unknown>)?.nextRunAtMs
-        ? new Date((job.state as Record<string, number>).nextRunAtMs).toISOString()
-        : null,
-      lastRun: (job.state as Record<string, unknown>)?.lastRunAtMs
-        ? new Date((job.state as Record<string, number>).lastRunAtMs).toISOString()
-        : null,
-    }));
-
-    return NextResponse.json(jobs);
+    return NextResponse.json(listAllCronJobs());
   } catch (error) {
     console.error("Error reading cron jobs:", error);
     return NextResponse.json(
@@ -44,52 +15,22 @@ export async function GET() {
   }
 }
 
-function formatDescription(job: Record<string, unknown>): string {
-  const payload = job.payload as Record<string, unknown>;
-  if (!payload) return "";
-  if (payload.kind === "agentTurn") {
-    const msg = (payload.message as string) || "";
-    return msg.length > 120 ? msg.substring(0, 120) + "..." : msg;
-  }
-  if (payload.kind === "systemEvent") {
-    const text = (payload.text as string) || "";
-    return text.length > 120 ? text.substring(0, 120) + "..." : text;
-  }
-  return "";
-}
-
-function formatSchedule(schedule: Record<string, unknown>): string {
-  if (!schedule) return "Unknown";
-  switch (schedule.kind) {
-    case "cron":
-      return `${schedule.expr}${schedule.tz ? ` (${schedule.tz})` : ""}`;
-    case "every":
-      const ms = schedule.everyMs as number;
-      if (ms >= 3600000) return `Every ${ms / 3600000}h`;
-      if (ms >= 60000) return `Every ${ms / 60000}m`;
-      return `Every ${ms / 1000}s`;
-    case "at":
-      return `Once at ${schedule.at}`;
-    default:
-      return JSON.stringify(schedule);
-  }
-}
-
-// PUT: Toggle enable/disable a cron job
+// PUT: Pause/resume a cron job (Hermes has no direct enable/disable — it's pause/resume)
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const { id, enabled } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: "Job ID is required" }, { status: 400 });
+    if (!id || typeof id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+      return NextResponse.json({ error: "Valid job ID is required" }, { status: 400 });
     }
 
-    const action = enabled ? "enable" : "disable";
-    const output = execSync(
-      `/usr/local/bin/openclaw cron ${action} ${id} --json 2>/dev/null || /usr/local/bin/openclaw cron update ${id} --enabled=${enabled} --json 2>/dev/null`,
-      { timeout: 10000, encoding: "utf-8", env: EXEC_ENV }
-    );
+    const profile = findJobProfile(id);
+    if (!profile) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    await runHermesCron(profile.path, [enabled ? "resume" : "pause", id]);
 
     return NextResponse.json({ success: true, id, enabled });
   } catch (error) {
@@ -107,15 +48,16 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
-    if (!id) {
-      return NextResponse.json({ error: "Job ID is required" }, { status: 400 });
+    if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+      return NextResponse.json({ error: "Valid job ID is required" }, { status: 400 });
     }
 
-    execSync(`/usr/local/bin/openclaw cron remove ${id} 2>/dev/null`, {
-      timeout: 10000,
-      encoding: "utf-8",
-      env: EXEC_ENV,
-    });
+    const profile = findJobProfile(id);
+    if (!profile) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    await runHermesCron(profile.path, ["remove", id]);
 
     return NextResponse.json({ success: true, deleted: id });
   } catch (error) {

@@ -48,13 +48,36 @@ async function runAction(action: string): Promise<ActionResult> {
       }
 
       case 'restart-gateway': {
-        const { stdout, stderr } = await execAsync('systemctl restart openclaw-gateway 2>&1 || echo "Service not found"');
-        output = stdout || stderr || 'Restart command executed';
-        // Also check status
-        try {
-          const { stdout: status } = await execAsync('systemctl is-active openclaw-gateway 2>&1 || echo "unknown"');
-          output += `\nStatus: ${status.trim()}`;
-        } catch {}
+        // Hermes runs one launchd gateway per profile: ai.hermes.gateway (default),
+        // ai.hermes.gateway-<profile> for named profiles. Discover them from the
+        // installed plists rather than hardcoding a profile name.
+        const { stdout: plistList } = await execAsync(
+          `ls ~/Library/LaunchAgents/ai.hermes.gateway*.plist 2>/dev/null | grep -v '\\.bak'`
+        ).catch(() => ({ stdout: '' }));
+        const labels = plistList
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((p) => p.split('/').pop()!.replace(/\.plist$/, ''));
+
+        if (labels.length === 0) {
+          output = 'No ai.hermes.gateway* launchd service found on this machine';
+          break;
+        }
+
+        const results: string[] = [];
+        for (const label of labels) {
+          try {
+            await execAsync(`launchctl kickstart -k gui/$(id -u)/${label}`);
+            // Anchor on end-of-line: "ai.hermes.gateway" is itself a prefix of
+            // "ai.hermes.gateway-songseonwoo", so an unanchored grep double-matches.
+            const { stdout: status } = await execAsync(`launchctl list | grep -E "[[:space:]]${label}$" || echo "not running"`);
+            results.push(`✅ ${label} restarted — ${status.trim()}`);
+          } catch (e) {
+            results.push(`❌ ${label}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+        output = results.join('\n');
         break;
       }
 
