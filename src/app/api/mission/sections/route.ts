@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
-import path from "path";
-
-const MISSION_FILE = path.join(
-  process.env.HOME ?? "/Users/judy",
-  ".openclaw/workspace/MISSION-CONTROL.md"
-);
+import { MISSION_FILE } from "@/lib/mission-file";
 
 function extractSection(content: string, heading: string): string {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

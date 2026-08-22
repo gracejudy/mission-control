@@ -18,6 +18,46 @@ function stripProjectSections(md: string): string {
     .replace(/## general-executor 현황[\s\S]*?(?=\n---|\n## )/m, "");
 }
 
+const STALE_THRESHOLD_DAYS = 7;
+
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
+function StaleDataBanner({ lastModified }: { lastModified: string }) {
+  const days = daysSince(lastModified);
+  if (days < STALE_THRESHOLD_DAYS) return null;
+
+  const formattedDate = new Date(lastModified).toLocaleDateString("ko-KR", {
+    timeZone: "Asia/Seoul",
+  });
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "12px",
+        padding: "16px 20px",
+        borderRadius: "10px",
+        backgroundColor: "rgba(251, 191, 36, 0.12)",
+        border: "1px solid rgba(251, 191, 36, 0.3)",
+        marginBottom: "24px",
+      }}
+    >
+      <AlertTriangle style={{ width: "18px", height: "18px", color: "#fbbf24", flexShrink: 0, marginTop: "1px" }} />
+      <div>
+        <p style={{ fontSize: "14px", fontWeight: 600, color: "#fbbf24", marginBottom: "4px" }}>
+          {days}일간 업데이트되지 않음
+        </p>
+        <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+          MISSION-CONTROL.md 마지막 수정: {formattedDate}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function barColor(progress: number): string {
   if (progress >= 70) return "#22c55e";
   if (progress >= 30) return "#eab308";
@@ -307,6 +347,8 @@ export default function MissionPage() {
             </div>
           </div>
         )}
+
+        {lastModified && <StaleDataBanner lastModified={lastModified} />}
 
         {/* Freedom 거리계 Cards */}
         {freedomMetrics.length > 0 && (

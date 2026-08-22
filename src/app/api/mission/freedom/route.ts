@@ -1,11 +1,5 @@
 import { NextResponse } from "next/server";
-import { readFile, stat } from "fs/promises";
-import path from "path";
-
-const MISSION_FILE = path.join(
-  process.env.HOME ?? "/Users/judy",
-  ".openclaw/workspace/MISSION-CONTROL.md"
-);
+import { readMissionFile } from "@/lib/mission-file";
 
 export type FreedomStatus = "🟢" | "🟡" | "🔴" | "⬜";
 
@@ -95,7 +89,7 @@ function parseFreedomTable(content: string): FreedomMetric[] {
     if (cells[0] === "지표" || /^-+$/.test(cells[0])) continue;
 
     const [label, current, target, statusRaw] = cells;
-    const status = (statusRaw.match(/[🟢🟡🔴⬜]/)?.[0] ?? "⬜") as FreedomStatus;
+    const status = (statusRaw.match(/[🟢🟡🔴⬜]/u)?.[0] ?? "⬜") as FreedomStatus;
     const cfg = metricConfig(label);
     const currentNum = parseKoreanAmount(current);
     const targetNum = parseKoreanAmount(target);
@@ -116,12 +110,8 @@ function parseFreedomTable(content: string): FreedomMetric[] {
 
 export async function GET() {
   try {
-    const [content, fileStat] = await Promise.all([
-      readFile(MISSION_FILE, "utf-8"),
-      stat(MISSION_FILE),
-    ]);
+    const { content, lastModified } = await readMissionFile();
     const metrics = parseFreedomTable(content);
-    const lastModified = fileStat.mtime.toISOString();
     return NextResponse.json({ metrics, lastModified });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
