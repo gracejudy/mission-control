@@ -30,10 +30,10 @@ function LoginForm() {
         router.push(from);
         router.refresh();
       } else {
-        setError("Contraseña incorrecta");
+        setError("비밀번호가 올바르지 않습니다");
       }
     } catch {
-      setError("Error de conexión");
+      setError("연결 오류가 발생했습니다");
     }
 
     setLoading(false);
@@ -70,7 +70,7 @@ function LoginForm() {
           className="text-sm"
           style={{ color: 'var(--text-secondary)' }}
         >
-          Introduce la contraseña para acceder
+          접속하려면 비밀번호를 입력하세요
         </p>
       </div>
 
@@ -91,7 +91,7 @@ function LoginForm() {
               border: '1px solid var(--border)',
               color: 'var(--text-primary)',
             }}
-            placeholder="Contraseña"
+            placeholder="비밀번호"
             required
           />
         </div>
@@ -118,7 +118,7 @@ function LoginForm() {
             color: 'white',
           }}
         >
-          {loading ? "Verificando..." : "Entrar"}
+          {loading ? "확인 중..." : "로그인"}
         </button>
       </form>
 

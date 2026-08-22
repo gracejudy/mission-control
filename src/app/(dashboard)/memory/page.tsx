@@ -138,7 +138,7 @@ export default function MemoryPage() {
           Memory Browser
         </h1>
         <p style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-secondary)" }}>
-          Ver y editar archivos de memoria de los agentes
+          Hermes 프로필(default·프로필별)의 SOUL.md·memories 파일을 조회·편집합니다
         </p>
       </div>
 
@@ -420,7 +420,7 @@ export default function MemoryPage() {
                     >
                       <div style={{ textAlign: "center" }}>
                         <Brain style={{ width: "64px", height: "64px", margin: "0 auto 16px", opacity: 0.3 }} />
-                        <p style={{ fontSize: "14px" }}>Selecciona un archivo para ver o editar</p>
+                        <p style={{ fontSize: "14px" }}>파일을 선택해 조회하거나 편집하세요</p>
                       </div>
                     </div>
                   )}
@@ -438,7 +438,7 @@ export default function MemoryPage() {
                 fontSize: "14px",
               }}
             >
-              Selecciona un workspace
+              워크스페이스를 선택하세요
             </div>
           )}
         </main>

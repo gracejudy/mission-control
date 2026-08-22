@@ -20,7 +20,7 @@ export default function FilesPage() {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   useEffect(() => {
-    fetch("/api/files/workspaces")
+    fetch("/api/browse/workspaces")
       .then((res) => res.json())
       .then((data) => {
         setWorkspaces(data.workspaces || []);
@@ -55,7 +55,7 @@ export default function FilesPage() {
           File Browser
         </h1>
         <p style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-secondary)" }}>
-          Navega por los workspaces y archivos de los agentes
+          Hermes 프로필(default·프로필별)과 ~/brain 워크스페이스의 파일을 탐색·업로드·편집합니다
         </p>
       </div>
 
@@ -174,6 +174,7 @@ export default function FilesPage() {
                     path={currentPath}
                     onNavigate={setCurrentPath}
                     prefix={selectedWorkspaceData.name}
+                    rootPath={selectedWorkspaceData.path}
                   />
                 </div>
 
@@ -181,7 +182,7 @@ export default function FilesPage() {
                 <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
                   <button
                     onClick={() => setViewMode("list")}
-                    title="Vista lista"
+                    title="목록 보기"
                     style={{
                       padding: "5px 7px",
                       borderRadius: "6px",
@@ -199,7 +200,7 @@ export default function FilesPage() {
                   </button>
                   <button
                     onClick={() => setViewMode("grid")}
-                    title="Vista iconos"
+                    title="아이콘 보기"
                     style={{
                       padding: "5px 7px",
                       borderRadius: "6px",
@@ -239,7 +240,7 @@ export default function FilesPage() {
                 fontSize: "14px",
               }}
             >
-              Selecciona un workspace para explorar sus archivos
+              파일을 탐색할 워크스페이스를 선택하세요
             </div>
           )}
         </main>

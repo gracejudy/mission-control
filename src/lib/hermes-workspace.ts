@@ -19,6 +19,7 @@ import os from "os";
 
 export const HERMES_DIR = process.env.HERMES_DIR || path.join(os.homedir(), ".hermes");
 const PROFILES_DIR = path.join(HERMES_DIR, "profiles");
+const BRAIN_DIR = process.env.BRAIN_DIR || path.join(os.homedir(), "brain");
 
 export interface HermesWorkspace {
   id: string;
@@ -28,13 +29,18 @@ export interface HermesWorkspace {
   agentName?: string;
 }
 
-function extractPersonaName(soulPath: string): string | undefined {
+/** Reads the first markdown heading of a SOUL.md and splits it into a short
+ * display name and the full heading (e.g. "송선우 (宋善祐)" → short "송선우"). */
+function extractPersonaName(soulPath: string): { short?: string; full?: string } {
   try {
     const content = fs.readFileSync(soulPath, "utf-8");
     const match = content.match(/^#\s+(.+)/m);
-    return match ? match[1].trim() : undefined;
+    if (!match) return {};
+    const full = match[1].trim();
+    const short = full.replace(/\s*\([^)]*\)\s*$/, "").trim() || full;
+    return { short, full: full !== short ? full : undefined };
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -48,7 +54,7 @@ export function listWorkspaces(): HermesWorkspace[] {
       name: "Default",
       emoji: "🪽",
       path: HERMES_DIR,
-      agentName: extractPersonaName(path.join(HERMES_DIR, "SOUL.md")),
+      agentName: extractPersonaName(path.join(HERMES_DIR, "SOUL.md")).full,
     });
   }
 
@@ -56,12 +62,13 @@ export function listWorkspaces(): HermesWorkspace[] {
     for (const entry of fs.readdirSync(PROFILES_DIR, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const profilePath = path.join(PROFILES_DIR, entry.name);
+      const persona = extractPersonaName(path.join(profilePath, "SOUL.md"));
       workspaces.push({
         id: `profiles/${entry.name}`,
-        name: entry.name.charAt(0).toUpperCase() + entry.name.slice(1),
+        name: persona.short || entry.name.charAt(0).toUpperCase() + entry.name.slice(1),
         emoji: "🤖",
         path: profilePath,
-        agentName: extractPersonaName(path.join(profilePath, "SOUL.md")),
+        agentName: persona.full,
       });
     }
   }
@@ -76,12 +83,25 @@ export function listWorkspaces(): HermesWorkspace[] {
 }
 
 /**
+ * Workspaces for the general file browser: every Hermes profile plus ~/brain
+ * (a separate, non-Hermes personal knowledge base — not a memory profile, so
+ * it's excluded from the Memory page's workspace list).
+ */
+export function listBrowseWorkspaces(): HermesWorkspace[] {
+  const workspaces = listWorkspaces();
+  if (fs.existsSync(BRAIN_DIR)) {
+    workspaces.push({ id: "brain", name: "brain", emoji: "🧠", path: BRAIN_DIR });
+  }
+  return workspaces;
+}
+
+/**
  * Resolve a workspace id to its absolute directory path.
- * Only ids returned by listWorkspaces() resolve — anything else (including
- * traversal attempts) returns null.
+ * Only ids returned by listBrowseWorkspaces() resolve — anything else
+ * (including traversal attempts) returns null.
  */
 export function resolveWorkspacePath(workspaceId: string | null | undefined): string | null {
   const id = workspaceId || "default";
-  const match = listWorkspaces().find((w) => w.id === id);
+  const match = listBrowseWorkspaces().find((w) => w.id === id);
   return match ? match.path : null;
 }
