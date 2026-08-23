@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { RefreshCw, Layers, TrendingUp, Sprout, Monitor } from "lucide-react";
+import { BacklogBoard } from "@/components/BacklogBoard";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -1145,6 +1146,8 @@ export default function ProjectsPage() {
           margin: "0 auto",
         }}
       >
+        <BacklogBoard />
+
         {statusError && (
           <div
             style={{
