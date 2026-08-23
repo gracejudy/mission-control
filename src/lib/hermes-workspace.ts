@@ -20,6 +20,7 @@ import os from "os";
 export const HERMES_DIR = process.env.HERMES_DIR || path.join(os.homedir(), ".hermes");
 const PROFILES_DIR = path.join(HERMES_DIR, "profiles");
 const BRAIN_DIR = process.env.BRAIN_DIR || path.join(os.homedir(), "brain");
+const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
 
 export interface HermesWorkspace {
   id: string;
@@ -27,6 +28,8 @@ export interface HermesWorkspace {
   emoji: string;
   path: string;
   agentName?: string;
+  /** Optional brand icon (e.g. Claude's mark) to render instead of `emoji`. */
+  iconUrl?: string;
 }
 
 /** Reads the first markdown heading of a SOUL.md and splits it into a short
@@ -84,13 +87,16 @@ export function listWorkspaces(): HermesWorkspace[] {
 
 /**
  * Workspaces for the general file browser: every Hermes profile plus ~/brain
- * (a separate, non-Hermes personal knowledge base — not a memory profile, so
- * it's excluded from the Memory page's workspace list).
+ * and ~/.claude (separate, non-Hermes stores — not memory profiles, so
+ * they're excluded from the Memory page's workspace list).
  */
 export function listBrowseWorkspaces(): HermesWorkspace[] {
   const workspaces = listWorkspaces();
   if (fs.existsSync(BRAIN_DIR)) {
     workspaces.push({ id: "brain", name: "brain", emoji: "🧠", path: BRAIN_DIR });
+  }
+  if (fs.existsSync(CLAUDE_DIR)) {
+    workspaces.push({ id: "claude", name: "claude", emoji: "📁", path: CLAUDE_DIR, iconUrl: "/claude.svg" });
   }
   return workspaces;
 }

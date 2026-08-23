@@ -11,6 +11,7 @@ interface Workspace {
   emoji: string;
   path: string;
   agentName?: string;
+  iconUrl?: string;
 }
 
 export default function FilesPage() {
@@ -118,7 +119,12 @@ export default function FilesPage() {
                   if (!isSelected) e.currentTarget.style.background = "transparent";
                 }}
               >
-                <span style={{ fontSize: "18px", lineHeight: 1, flexShrink: 0 }}>{workspace.emoji}</span>
+                {workspace.iconUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={workspace.iconUrl} alt="" width={18} height={18} style={{ flexShrink: 0 }} />
+                ) : (
+                  <span style={{ fontSize: "18px", lineHeight: 1, flexShrink: 0 }}>{workspace.emoji}</span>
+                )}
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
