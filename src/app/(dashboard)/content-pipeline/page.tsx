@@ -34,6 +34,8 @@ interface AffiliateLink {
   program: string;
   productTitle: string;
   clicks: number;
+  conversionRate: number | null;
+  lastClickedAt: string | null;
 }
 
 interface AffiliateLinksData {
@@ -579,6 +581,11 @@ export default function ContentPipelinePage() {
 
   const editingIdea = ideas.find((i) => i.id === editingId) ?? null;
 
+  const sortedAffiliateLinks = useMemo(
+    () => (affiliateLinks?.links ?? []).slice().sort((a, b) => b.clicks - a.clicks),
+    [affiliateLinks]
+  );
+
   const remainingMs =
     automation?.enabled && automation.expiresAt
       ? new Date(automation.expiresAt).getTime() - nowTick
@@ -720,10 +727,10 @@ export default function ContentPipelinePage() {
           </button>
           {linksExpanded && (
             <div className="px-4 pb-4 flex flex-col gap-1.5">
-              {affiliateLinks.links.map((link) => (
+              {sortedAffiliateLinks.map((link) => (
                 <div
                   key={link.id}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 rounded-lg text-sm"
                   style={{ backgroundColor: "var(--surface)" }}
                 >
                   <span
@@ -732,9 +739,34 @@ export default function ContentPipelinePage() {
                   >
                     {link.program}
                   </span>
-                  <span className="flex-1 min-w-0 truncate" style={{ color: "var(--text-primary)" }}>
+                  <span className="flex-1 min-w-[100px] truncate" style={{ color: "var(--text-primary)" }}>
                     {link.label}
                   </span>
+                  <div className="flex items-center gap-3 text-[11px] font-mono flex-shrink-0">
+                    <span title="클릭 수">
+                      <span style={{ color: LABEL_DIM }}>클릭 </span>
+                      <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+                        {link.clicks}
+                      </span>
+                    </span>
+                    <span title="판매전환율">
+                      <span style={{ color: LABEL_DIM }}>전환 </span>
+                      <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+                        {link.conversionRate != null ? `${(link.conversionRate * 100).toFixed(1)}%` : "—"}
+                      </span>
+                    </span>
+                    <span title="최근 클릭일">
+                      <span style={{ color: LABEL_DIM }}>최근 </span>
+                      <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+                        {link.lastClickedAt
+                          ? new Date(link.lastClickedAt).toLocaleDateString("ko-KR", {
+                              month: "numeric",
+                              day: "numeric",
+                            })
+                          : "—"}
+                      </span>
+                    </span>
+                  </div>
                   <span className="font-mono text-xs flex-shrink-0" style={{ color: "var(--text-secondary)" }}>
                     {link.url}
                   </span>

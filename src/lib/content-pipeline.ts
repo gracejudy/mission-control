@@ -408,6 +408,10 @@ export interface AffiliateLink {
   program: string;
   productTitle: string;
   clicks: number;
+  /** 0~1 비율(예: 0.083 = 8.3%). 3ha API에 데이터 없으면 null. */
+  conversionRate: number | null;
+  /** ISO 문자열. 클릭 이력 없으면 null. */
+  lastClickedAt: string | null;
 }
 
 export interface AffiliateLinksData {
@@ -420,7 +424,19 @@ export async function readAffiliateLinks(): Promise<AffiliateLinksData> {
   try {
     const data = await fs.readFile(AFFILIATE_LINKS_JSON_PATH, 'utf-8');
     const parsed = JSON.parse(data);
-    return { updatedAt: parsed.updatedAt ?? null, links: parsed.links ?? [] };
+    const rawLinks: Record<string, unknown>[] = parsed.links ?? [];
+    // conversionRate/lastClickedAt는 2026-08-24에 추가된 필드 — 갱신 전 스냅샷엔 없을 수 있어 기본값 처리
+    const links: AffiliateLink[] = rawLinks.map((l) => ({
+      id: l.id as number,
+      label: l.label as string,
+      url: l.url as string,
+      program: l.program as string,
+      productTitle: l.productTitle as string,
+      clicks: (l.clicks as number) ?? 0,
+      conversionRate: (l.conversionRate as number | null | undefined) ?? null,
+      lastClickedAt: (l.lastClickedAt as string | null | undefined) ?? null,
+    }));
+    return { updatedAt: parsed.updatedAt ?? null, links };
   } catch {
     return { updatedAt: null, links: [] };
   }
