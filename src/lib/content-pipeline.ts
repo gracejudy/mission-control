@@ -443,6 +443,83 @@ export async function readStrategy(): Promise<StrategyMap> {
   }
 }
 
+export interface FetchedNaverPost {
+  title: string;
+  text: string;
+}
+
+const NAVER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+/** Parses a naver blog post URL (frameset or PostView form) into { blogId, logNo }. */
+export function parseNaverPostUrl(url: string): { blogId: string; logNo: string } {
+  const m1 = url.match(/blog\.naver\.com\/([^/?]+)\/(\d+)/);
+  if (m1) return { blogId: m1[1], logNo: m1[2] };
+  const m2 = url.match(/blogId=([^&]+).*?logNo=(\d+)/);
+  if (m2) return { blogId: m2[1], logNo: m2[2] };
+  throw new Error(`네이버 블로그 URL에서 blogId/logNo를 못 찾았습니다: ${url}`);
+}
+
+/** Extracts the se-main-container div (Smart Editor ONE post body) via tag-depth matching. */
+function extractMainContainer(html: string): string | null {
+  const startMatch = html.match(/<div class="se-main-container">/);
+  if (!startMatch || startMatch.index === undefined) return null;
+  const start = startMatch.index + startMatch[0].length;
+
+  const tagRe = /<div[^>]*>|<\/div>/g;
+  tagRe.lastIndex = start;
+  let depth = 1;
+  let end = html.length;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(html))) {
+    depth += m[0].startsWith('</div') ? -1 : 1;
+    if (depth === 0) {
+      end = m.index;
+      break;
+    }
+  }
+
+  let body = html.slice(start, end);
+  body = body.replace(/<script[\s\S]*?<\/script>/g, '');
+  body = body.replace(/<style[\s\S]*?<\/style>/g, '');
+  let text = body.replace(/<[^>]+>/g, '\n');
+  text = text.replace(/[ \t]+/g, ' ');
+  text = text.replace(/\n\s*\n+/g, '\n').trim();
+  return text;
+}
+
+/**
+ * Fetches a published naver blog post's title + body text directly from its URL.
+ *
+ * blog.naver.com's robots.txt blocks AI crawlers (ClaudeBot 등) domain-wide, which is why
+ * WebFetch/브라우저 자동화가 이 도메인을 하드 리퓨절해왔다 — 그런데 서버 자체엔 봇탐지가
+ * 없다(2026-08-24 실측: UA 없는 요청도 200, se-main-container에 본문 전체가 그대로 있음).
+ * 그래서 일반 fetch()로 충분하다 — 로그인·CDP·스크린샷 전부 불필요. 같은 로직의 Python
+ * 버전이 scripts/naver_post_fetch.py에 있다(단독 실행용, 이 함수와 동기화 유지 필요).
+ */
+export async function fetchNaverPost(url: string): Promise<FetchedNaverPost> {
+  const { blogId, logNo } = parseNaverPostUrl(url);
+  const postViewUrl = `https://blog.naver.com/PostView.naver?blogId=${encodeURIComponent(blogId)}&logNo=${logNo}`;
+  const res = await fetch(postViewUrl, { headers: { 'User-Agent': NAVER_UA } });
+  if (!res.ok) throw new Error(`네이버 블로그 요청 실패: HTTP ${res.status}`);
+  const html = await res.text();
+
+  const titleMatch = html.match(/<title>(.*?)\s*:\s*네이버 블로그<\/title>/);
+  const title = titleMatch ? titleMatch[1].trim() : undefined;
+  if (!title) {
+    throw new Error('제목 추출 실패 — 페이지 구조가 예상과 다릅니다. URL을 확인해주세요.');
+  }
+
+  const text = extractMainContainer(html);
+  if (!text || text.length < 50) {
+    throw new Error(
+      `본문 추출 실패 (구버전 에디터 글일 수 있음) — 직접 확인: https://blog.naver.com/${blogId}/${logNo}`
+    );
+  }
+
+  return { title, text };
+}
+
 /** True if a process with this PID is currently running (best-effort — does not confirm it's actually our watcher). */
 export function isPidAlive(pid: number | null): boolean {
   if (!pid) return false;
