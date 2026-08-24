@@ -71,7 +71,17 @@ interface Idea {
   publishedAt?: string;
   publishedTitle?: string;
   actionNeeded?: ActionNeeded;
+  /** 타겟/키워드/링크위치/제휴플랫폼 등 — Claude 세션이 strategy.json에 직접 기록.
+   *  초안 없으면 데이터기반 제안, 초안 있으면 실제 작성 기준. 필드는 계속 늘어날 수 있음(열린 맵). */
+  strategy?: Record<string, string> | null;
 }
+
+const STRATEGY_LABELS: Record<string, string> = {
+  target: "타겟",
+  keywords: "키워드",
+  linkPlacement: "링크위치",
+  platform: "제휴플랫폼",
+};
 
 const ACTION_NEEDED_META: Record<ActionNeeded["type"], { label: string; color: string }> = {
   add_link: { label: "🔗 링크 추가 필요", color: "var(--info)" },
@@ -772,6 +782,30 @@ export default function ContentPipelinePage() {
                               </span>
                             ))}
                           </div>
+
+                          {idea.strategy && Object.keys(idea.strategy).length > 0 && (
+                            <div
+                              className="mb-4 px-2.5 py-2 rounded-lg text-[11px] space-y-1"
+                              style={{ backgroundColor: "var(--surface)" }}
+                            >
+                              <div
+                                className="font-medium mb-1"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                {idea.status === "idle" || idea.status === "requested"
+                                  ? "💡 제안 (데이터 기반, 초안 작성 전)"
+                                  : "작성 기준"}
+                              </div>
+                              {Object.entries(idea.strategy).map(([k, v]) => (
+                                <div key={k} style={{ color: "var(--text-secondary)" }}>
+                                  <span style={{ color: "var(--text-muted)" }}>
+                                    {STRATEGY_LABELS[k] ?? k}
+                                  </span>
+                                  : {v}
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
                           <div className="mt-auto pt-1">
                             {idea.status === "idle" && (

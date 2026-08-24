@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   readIdeas,
   readStatus,
+  readStrategy,
   mergeIdeaWithStatus,
   appendIdea,
   invalidCellValue,
@@ -15,8 +16,11 @@ const IDEA_TYPES: IdeaType[] = ['I', 'B', 'A'];
 
 export async function GET() {
   try {
-    const [rawIdeas, status] = await Promise.all([readIdeas(), readStatus()]);
-    const ideas = rawIdeas.map((idea) => mergeIdeaWithStatus(idea, status));
+    const [rawIdeas, status, strategy] = await Promise.all([readIdeas(), readStatus(), readStrategy()]);
+    const ideas = rawIdeas.map((idea) => ({
+      ...mergeIdeaWithStatus(idea, status),
+      strategy: strategy[idea.id] ?? null,
+    }));
     return NextResponse.json({ ideas });
   } catch (error) {
     console.error('Failed to load content-pipeline ideas:', error);

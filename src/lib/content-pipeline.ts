@@ -11,6 +11,7 @@ export const DRAFTS_DIR = path.join(CONTENT_PIPELINE_DIR, 'drafts');
 export const TASKS_DIR = path.join(CONTENT_PIPELINE_DIR, 'tasks');
 export const AUTOMATION_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'automation.json');
 export const AFFILIATE_LINKS_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'affiliate-links.json');
+export const STRATEGY_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'strategy.json');
 export const WATCHER_SCRIPT_PATH = path.join(CONTENT_PIPELINE_DIR, 'scripts', 'queue-watcher.sh');
 export const AUTOMATION_DURATION_MS = 60 * 60 * 1000;
 
@@ -422,6 +423,23 @@ export async function readAffiliateLinks(): Promise<AffiliateLinksData> {
     return { updatedAt: parsed.updatedAt ?? null, links: parsed.links ?? [] };
   } catch {
     return { updatedAt: null, links: [] };
+  }
+}
+
+export type StrategyMap = Record<string, Record<string, string>>;
+
+/**
+ * Reads strategy.json — per-idea 타겟/키워드/링크위치/제휴플랫폼 (and whatever fields get added
+ * later; the shape is intentionally an open string map so new fields need no code change).
+ * Written directly by Claude Code sessions when drafting/planning a piece, same pattern as
+ * affiliate-links.json — mission-control never writes this file.
+ */
+export async function readStrategy(): Promise<StrategyMap> {
+  try {
+    const data = await fs.readFile(STRATEGY_JSON_PATH, 'utf-8');
+    return JSON.parse(data);
+  } catch {
+    return {};
   }
 }
 
