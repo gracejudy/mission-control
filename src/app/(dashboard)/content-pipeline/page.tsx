@@ -131,11 +131,48 @@ const STATUS_META: Record<Idea["status"], { label: string; color: string }> = {
   published: { label: "발행완료", color: "var(--success)" },
 };
 
-function StatTile({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+// 2026-08-24 가독성 리뷰 반영: 전역 --text-muted(#525252)가 카드 배경에 묻혀
+// 이 페이지 한정으로 라벨/값 대비를 별도 상향 (다른 페이지의 전역 토큰은 건드리지 않음)
+const LABEL_DIM = "#A1A1AA"; // 라벨 전용 — text-zinc-400, 값과 명확히 구분되는 둔탁한 회색
+const VALUE_BRIGHT = "#FFFFFF"; // 실제로 읽어야 하는 값 — 순백 + font-semibold와 함께 사용
+const CARD_BG = "#202024"; // var(--card, #1A1A1A)보다 살짝 밝게 — 배경/텍스트 채도 차이 확보
+const CARD_DIVIDER = "rgba(255,255,255,0.08)"; // 제목 영역과 상세 정보 영역 사이 구분선
+
+function StatTile({
+  label,
+  value,
+  sub,
+  onClick,
+  active,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  onClick?: () => void;
+  active?: boolean;
+}) {
   return (
     <div
-      className="px-5 py-4 rounded-xl"
-      style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", minWidth: 140 }}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      className="px-5 py-4 rounded-xl transition-colors"
+      style={{
+        backgroundColor: active ? "color-mix(in srgb, var(--accent) 14%, var(--card))" : "var(--card)",
+        border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
+        minWidth: 140,
+        cursor: onClick ? "pointer" : "default",
+      }}
     >
       <p
         className="mb-1.5"
@@ -178,19 +215,30 @@ function PrimaryButton({
   color,
   icon: Icon,
   children,
+  variant = "solid",
 }: {
   onClick: () => void;
   disabled?: boolean;
   color: string;
   icon?: typeof Lightbulb;
   children: React.ReactNode;
+  /** outline: 강한 시선을 끌지 않아야 할 액션(예: 카드마다 반복되는 "초안 요청")에 사용 */
+  variant?: "solid" | "outline";
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className="text-xs font-semibold px-3.5 py-2 rounded-lg inline-flex items-center gap-1.5 transition-opacity disabled:opacity-50"
-      style={{ backgroundColor: color, color: "#fff" }}
+      style={
+        variant === "outline"
+          ? {
+              backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`,
+              color,
+              border: `1px solid color-mix(in srgb, ${color} 40%, transparent)`,
+            }
+          : { backgroundColor: color, color: "#fff" }
+      }
     >
       {Icon && <Icon className="w-3.5 h-3.5" />}
       {children}
@@ -203,6 +251,7 @@ export default function ContentPipelinePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [requestingId, setRequestingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "no_draft" | "has_draft">("all");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState("");
@@ -212,9 +261,8 @@ export default function ContentPipelinePage() {
 
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [publishUrl, setPublishUrl] = useState("");
-  const [publishTitle, setPublishTitle] = useState("");
-  const [publishText, setPublishText] = useState("");
   const [publishSubmitting, setPublishSubmitting] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   const [automation, setAutomation] = useState<AutomationState | null>(null);
   const [automationBusy, setAutomationBusy] = useState(false);
@@ -458,43 +506,61 @@ export default function ContentPipelinePage() {
 
   const openPublishForm = (idea: Idea) => {
     setPublishingId(idea.id);
-    setPublishText(draftContent);
-    setPublishTitle(idea.title);
     setPublishUrl("");
+    setPublishError(null);
   };
 
   const submitPublish = async (id: string) => {
-    // 2026-08-21: URL+제목 필수, 본문은 선택(네이버 에디터 복사가 번거로우면 생략 가능)
-    if (!publishUrl || !publishTitle) return;
+    if (!publishUrl) return;
     setPublishSubmitting(true);
+    setPublishError(null);
     try {
       const res = await fetch(`/api/content-pipeline/publish/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: publishTitle,
-          publishedText: publishText || undefined,
-          url: publishUrl,
-        }),
+        body: JSON.stringify({ url: publishUrl }),
       });
-      if (res.ok) {
-        setPublishingId(null);
-        setEditingId(null);
-        await fetchIdeas();
+      const data = await res.json();
+      if (!res.ok) {
+        setPublishError(data.error ?? "발행 URL에서 제목·본문을 가져오지 못했습니다");
+        return;
       }
+      setPublishingId(null);
+      setEditingId(null);
+      await fetchIdeas();
+    } catch {
+      setPublishError("발행 URL에서 제목·본문을 가져오지 못했습니다");
     } finally {
       setPublishSubmitting(false);
     }
   };
 
+  // 상단 스탯 타일과 동일한 기준 — idle/requested는 아직 초안 텍스트가 없어 "생성 전"으로 묶는다
+  const matchesStatusFilter = useCallback(
+    (idea: Idea) => {
+      switch (statusFilter) {
+        case "published":
+          return idea.status === "published";
+        case "no_draft":
+          return idea.status === "idle" || idea.status === "requested";
+        case "has_draft":
+          return idea.status === "draft";
+        default:
+          return true;
+      }
+    },
+    [statusFilter]
+  );
+
   const grouped = (["I", "B", "A"] as const).map((type) => ({
     type,
-    items: ideas.filter((i) => i.type === type),
+    items: ideas.filter((i) => i.type === type && matchesStatusFilter(i)),
   }));
 
   const stats = useMemo(() => {
     const published = ideas.filter((i) => i.status === "published");
-    const inProgress = ideas.filter((i) => i.status === "requested" || i.status === "draft");
+    const noDraft = ideas.filter((i) => i.status === "idle" || i.status === "requested");
+    const hasDraft = ideas.filter((i) => i.status === "draft");
     const affiliatePublished = published.filter((i) => i.type === "B").length;
     const infoPublished = published.filter((i) => i.type === "I").length;
     // 2026-08-21: 케이던스 1:2 → 1:1로 변경(webinar-gap-analysis.md 결정)
@@ -502,7 +568,8 @@ export default function ContentPipelinePage() {
     return {
       total: ideas.length,
       published: published.length,
-      inProgress: inProgress.length,
+      noDraft: noDraft.length,
+      hasDraft: hasDraft.length,
       cadenceSub:
         infoNeeded === 0
           ? "케이던스 충족 — 제휴글 준비 가능"
@@ -586,9 +653,31 @@ export default function ContentPipelinePage() {
 
       {!loading && !error && (
         <div className="flex flex-wrap items-center gap-3 mb-8">
-          <StatTile label="전체 소재" value={stats.total} />
-          <StatTile label="발행완료" value={stats.published} />
-          <StatTile label="진행중" value={stats.inProgress} sub="요청됨 + 초안" />
+          <StatTile
+            label="전체"
+            value={stats.total}
+            onClick={() => setStatusFilter("all")}
+            active={statusFilter === "all"}
+          />
+          <StatTile
+            label="발행완료"
+            value={stats.published}
+            onClick={() => setStatusFilter("published")}
+            active={statusFilter === "published"}
+          />
+          <StatTile
+            label="초안 생성 전"
+            value={stats.noDraft}
+            sub="대기중 포함"
+            onClick={() => setStatusFilter("no_draft")}
+            active={statusFilter === "no_draft"}
+          />
+          <StatTile
+            label="초안 생성됨"
+            value={stats.hasDraft}
+            onClick={() => setStatusFilter("has_draft")}
+            active={statusFilter === "has_draft"}
+          />
           <StatTile label="케이던스" value={stats.cadenceSub.includes("충족") ? "OK" : "확인 필요"} sub={stats.cadenceSub} />
           <div className="ml-auto">
             <PrimaryButton onClick={openAddModal} color="var(--accent)" icon={Plus}>
@@ -705,21 +794,21 @@ export default function ContentPipelinePage() {
                   소재 없음
                 </p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {items.map((idea) => {
                     const statusMeta = STATUS_META[idea.status];
                     return (
                       <div
                         key={idea.id}
                         className="rounded-xl overflow-hidden flex flex-col"
-                        style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
+                        style={{ backgroundColor: CARD_BG, border: "1px solid var(--border)" }}
                       >
                         <div style={{ height: 3, backgroundColor: meta.color }} />
                         <div className="p-4 flex flex-col flex-1">
                           <div className="flex items-start justify-between gap-2 mb-2">
                             <h3
                               className="font-semibold text-sm leading-snug"
-                              style={{ color: "var(--text-primary)" }}
+                              style={{ color: "var(--text-primary)", wordBreak: "keep-all" }}
                             >
                               <span
                                 className="font-mono text-[11px] font-medium px-1.5 py-0.5 rounded mr-1.5"
@@ -730,10 +819,10 @@ export default function ContentPipelinePage() {
                               {idea.title}
                             </h3>
                             <span
-                              className="text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap"
+                              className="text-[10px] font-semibold px-1.5 py-[3px] rounded-full flex-shrink-0 whitespace-nowrap"
                               style={{
                                 color: statusMeta.color,
-                                backgroundColor: `color-mix(in srgb, ${statusMeta.color} 15%, transparent)`,
+                                backgroundColor: `color-mix(in srgb, ${statusMeta.color} 10%, transparent)`,
                               }}
                             >
                               {statusMeta.label}
@@ -765,47 +854,51 @@ export default function ContentPipelinePage() {
                             </div>
                           )}
 
-                          <div className="flex flex-wrap gap-1.5 mb-4">
-                            <span
-                              className="text-[11px] px-2 py-0.5 rounded-md"
-                              style={{ backgroundColor: "var(--surface)", color: "var(--text-secondary)" }}
-                            >
-                              {idea.meta}
-                            </span>
-                            {Object.entries(idea.extra).map(([k, v]) => (
+                          <div
+                            className="pt-3 mt-1 mb-2"
+                            style={{ borderTop: `1px solid ${CARD_DIVIDER}` }}
+                          >
+                            <div className="flex flex-wrap gap-1.5 mb-3 leading-relaxed">
                               <span
-                                key={k}
                                 className="text-[11px] px-2 py-0.5 rounded-md"
-                                style={{ backgroundColor: "var(--surface)", color: "var(--text-muted)" }}
+                                style={{ backgroundColor: "var(--surface)", color: "var(--text-secondary)" }}
                               >
-                                {v}
+                                {idea.meta}
                               </span>
-                            ))}
-                          </div>
-
-                          {idea.strategy && Object.keys(idea.strategy).length > 0 && (
-                            <div
-                              className="mb-4 px-2.5 py-2 rounded-lg text-[11px] space-y-1"
-                              style={{ backgroundColor: "var(--surface)" }}
-                            >
-                              <div
-                                className="font-medium mb-1"
-                                style={{ color: "var(--text-muted)" }}
-                              >
-                                {idea.status === "idle" || idea.status === "requested"
-                                  ? "💡 제안 (데이터 기반, 초안 작성 전)"
-                                  : "작성 기준"}
-                              </div>
-                              {Object.entries(idea.strategy).map(([k, v]) => (
-                                <div key={k} style={{ color: "var(--text-secondary)" }}>
-                                  <span style={{ color: "var(--text-muted)" }}>
-                                    {STRATEGY_LABELS[k] ?? k}
-                                  </span>
-                                  : {v}
-                                </div>
+                              {Object.entries(idea.extra).map(([k, v]) => (
+                                <span
+                                  key={k}
+                                  className="text-[11px] px-2 py-0.5 rounded-md"
+                                  style={{ backgroundColor: "var(--surface)", color: LABEL_DIM }}
+                                >
+                                  {v}
+                                </span>
                               ))}
                             </div>
-                          )}
+
+                            {idea.strategy && Object.keys(idea.strategy).length > 0 && (
+                              <div
+                                className="px-2.5 py-2 rounded-lg text-[11px] space-y-1.5 leading-relaxed"
+                                style={{ backgroundColor: "var(--surface)" }}
+                              >
+                                <div className="font-medium mb-1" style={{ color: LABEL_DIM }}>
+                                  {idea.status === "idle" || idea.status === "requested"
+                                    ? "💡 제안 (데이터 기반, 초안 작성 전)"
+                                    : "작성 기준"}
+                                </div>
+                                {Object.entries(idea.strategy).map(([k, v]) => (
+                                  <div key={k}>
+                                    <span style={{ color: LABEL_DIM }}>
+                                      {STRATEGY_LABELS[k] ?? k}:
+                                    </span>{" "}
+                                    <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+                                      {v}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
 
                           <div className="mt-auto pt-1">
                             {idea.status === "idle" && (
@@ -814,6 +907,7 @@ export default function ContentPipelinePage() {
                                 disabled={requestingId === idea.id}
                                 color="var(--accent)"
                                 icon={Sparkles}
+                                variant="outline"
                               >
                                 {requestingId === idea.id ? "요청 중..." : "초안 요청"}
                               </PrimaryButton>
@@ -1077,8 +1171,12 @@ export default function ContentPipelinePage() {
           {publishingId === editingIdea.id && (
             <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
               <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>
-                네이버 발행 URL<span style={{ color: "var(--error)" }}> * 필수 (성과 추적용)</span>
+                네이버 발행 URL<span style={{ color: "var(--error)" }}> * 필수</span>
               </label>
+              <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
+                URL만 넣으면 제목·본문을 그 페이지에서 직접 가져옵니다 — 네이버 에디터에서 복사해 붙여넣지
+                않아도 됩니다.
+              </p>
               <input
                 value={publishUrl}
                 onChange={(e) => setPublishUrl(e.target.value)}
@@ -1092,43 +1190,18 @@ export default function ContentPipelinePage() {
                   color: "var(--text-primary)",
                 }}
               />
-              <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>
-                최종 발행 제목<span style={{ color: "var(--error)" }}> * 필수 (스타일 학습·성과추적 매칭용)</span>
-              </label>
-              <input
-                value={publishTitle}
-                onChange={(e) => setPublishTitle(e.target.value)}
-                placeholder="네이버에 실제로 올라간 제목 (필수)"
-                required
-                className="w-full p-2 rounded-lg text-sm mb-3"
-                style={{
-                  backgroundColor: "var(--surface)",
-                  border: publishTitle ? "1px solid var(--border)" : "1px solid var(--error)",
-                  color: "var(--text-primary)",
-                }}
-              />
-              <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>
-                최종 발행 텍스트 (네이버 에디터에서 복사한 전체 텍스트) — 선택, 생략 가능
-              </label>
-              <textarea
-                value={publishText}
-                onChange={(e) => setPublishText(e.target.value)}
-                rows={10}
-                placeholder="복사하기 번거로우면 비워둬도 됩니다"
-                className="w-full p-3 rounded-lg text-sm font-mono mb-3 leading-relaxed"
-                style={{
-                  backgroundColor: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-primary)",
-                }}
-              />
+              {publishError && (
+                <p className="text-xs mb-3" style={{ color: "var(--error)" }}>
+                  {publishError}
+                </p>
+              )}
               <PrimaryButton
                 onClick={() => submitPublish(editingIdea.id)}
-                disabled={publishSubmitting || !publishUrl || !publishTitle}
+                disabled={publishSubmitting || !publishUrl}
                 color="var(--accent)"
                 icon={Send}
               >
-                {publishSubmitting ? "저장 중..." : "발행 완료 확정"}
+                {publishSubmitting ? "가져오는 중..." : "발행 완료 확정"}
               </PrimaryButton>
             </div>
           )}

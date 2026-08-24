@@ -91,6 +91,7 @@ export function StatusBar() {
               width: `${Math.min(100, barPercent)}%`,
               height: "100%",
               backgroundColor: color,
+              opacity: 0.7,
               borderRadius: "2px",
             }}
           />
