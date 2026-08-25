@@ -49,6 +49,9 @@ export interface RegisteredScript {
   createdAt: string;
   /** 등록 시점의 실행 파일 sha256 해시. 실행 전 재확인해 변경 감지에 쓴다. */
   fileHash: string;
+  /** 마지막으로 실제 실행(execFile)된 시각. 목록 정렬(최근 사용순)에 쓴다. 실행 전 검증/해시
+   *  불일치로 막힌 시도는 "사용"으로 안 친다 — 실제 execFile 직전에만 갱신한다. */
+  lastRunAt?: string;
 }
 
 export interface RegisteredProject {
@@ -65,14 +68,28 @@ export interface ProjectScriptsRegistry {
 
 const EMPTY_REGISTRY: ProjectScriptsRegistry = { projects: [], scripts: {} };
 
+/** 최근 사용순(lastRunAt 내림차순) 정렬. 한 번도 안 쓴 스크립트는 뒤로 밀리되, 서로간
+ *  상대 순서(등록 순)는 안정적으로 유지된다(Array.sort는 stable). */
+function sortByRecentUse(scripts: RegisteredScript[]): RegisteredScript[] {
+  return [...scripts].sort((a, b) => {
+    const at = a.lastRunAt ? Date.parse(a.lastRunAt) : -Infinity;
+    const bt = b.lastRunAt ? Date.parse(b.lastRunAt) : -Infinity;
+    return bt - at;
+  });
+}
+
 export function readRegistry(): ProjectScriptsRegistry {
   try {
     const raw = fs.readFileSync(REGISTRY_FILE, "utf-8");
     const data = JSON.parse(raw);
-    return {
-      projects: Array.isArray(data.projects) ? data.projects : [],
-      scripts: data.scripts && typeof data.scripts === "object" ? data.scripts : {},
-    };
+    const projects = Array.isArray(data.projects) ? data.projects : [];
+    const rawScripts: Record<string, RegisteredScript[]> =
+      data.scripts && typeof data.scripts === "object" ? data.scripts : {};
+    const scripts: Record<string, RegisteredScript[]> = {};
+    for (const projectId of Object.keys(rawScripts)) {
+      scripts[projectId] = sortByRecentUse(rawScripts[projectId] ?? []);
+    }
+    return { projects, scripts };
   } catch {
     return EMPTY_REGISTRY;
   }
@@ -173,6 +190,17 @@ export function reconnectScript(projectId: string, scriptId: string): Registered
 export function deleteScript(projectId: string, scriptId: string): void {
   const registry = readRegistry();
   registry.scripts[projectId] = (registry.scripts[projectId] ?? []).filter((s) => s.id !== scriptId);
+  writeRegistry(registry);
+}
+
+/** 실제 실행(execFile) 직전에만 호출 — "최근 사용순" 정렬의 기준 시각을 갱신한다. */
+function touchScriptLastRun(projectId: string, scriptId: string, ranAt: string): void {
+  const registry = readRegistry();
+  const scripts = registry.scripts[projectId] ?? [];
+  const idx = scripts.findIndex((s) => s.id === scriptId);
+  if (idx === -1) return;
+  scripts[idx] = { ...scripts[idx], lastRunAt: ranAt };
+  registry.scripts[projectId] = scripts;
   writeRegistry(registry);
 }
 
@@ -294,6 +322,7 @@ export async function runScript(
     };
   }
 
+  touchScriptLastRun(projectId, scriptId, ranAt);
   try {
     const { stdout, stderr } = await execFileAsync(script.command, args, {
       cwd: project.cwd,
