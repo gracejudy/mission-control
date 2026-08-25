@@ -1,0 +1,32 @@
+{
+  "projects": [
+    {
+      "id": "example-project",
+      "label": "example-project",
+      "cwd": "/Users/judy/dev/example-project",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "scripts": {
+    "example-project": [
+      {
+        "id": "health-check-abc123",
+        "name": "Health Check",
+        "description": "서비스 상태를 점검한다",
+        "command": "node",
+        "baseArgs": ["scripts/health_check.js"],
+        "params": [
+          {
+            "key": "verbose",
+            "label": "상세 출력",
+            "flag": "--verbose",
+            "type": "flag"
+          }
+        ],
+        "confirmBeforeRun": false,
+        "fileHash": "sha256 of scripts/health_check.js — set automatically on registration, used to detect the file changing later",
+        "createdAt": "2026-01-01T00:00:00.000Z"
+      }
+    ]
+  }
+}
