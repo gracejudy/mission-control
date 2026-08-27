@@ -6,6 +6,14 @@ import { CronJobCard, type CronJob } from "@/components/CronJobCard";
 import { CronWeeklyTimeline } from "@/components/CronWeeklyTimeline";
 
 type ViewMode = "cards" | "timeline";
+type SourceFilter = "all" | "hermes" | "crontab" | "launchd";
+
+const SOURCE_FILTER_LABEL: Record<SourceFilter, string> = {
+  all: "전체",
+  hermes: "Hermes",
+  crontab: "crontab",
+  launchd: "launchd",
+};
 
 export default function CronJobsPage() {
   const [jobs, setJobs] = useState<CronJob[]>([]);
@@ -13,6 +21,7 @@ export default function CronJobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [runToast, setRunToast] = useState<{ id: string; status: "success" | "error"; name: string } | null>(null);
 
   const fetchJobs = useCallback(async () => {
@@ -86,8 +95,18 @@ export default function CronJobsPage() {
     setTimeout(() => setRunToast(null), 4000);
   };
 
-  const activeJobs = jobs.filter((j) => j.enabled).length;
-  const pausedJobs = jobs.length - activeJobs;
+  const sourceCounts: Record<SourceFilter, number> = {
+    all: jobs.length,
+    hermes: jobs.filter((j) => (j.source || "hermes") === "hermes").length,
+    crontab: jobs.filter((j) => j.source === "crontab").length,
+    launchd: jobs.filter((j) => j.source === "launchd").length,
+  };
+
+  const filteredJobs =
+    sourceFilter === "all" ? jobs : jobs.filter((j) => (j.source || "hermes") === sourceFilter);
+
+  const activeJobs = filteredJobs.filter((j) => j.enabled).length;
+  const pausedJobs = filteredJobs.length - activeJobs;
 
   return (
     <div className="p-4 md:p-8">
@@ -101,7 +120,7 @@ export default function CronJobsPage() {
             Cron Jobs
           </h1>
           <p className="text-sm md:text-base" style={{ color: 'var(--text-secondary)' }}>
-            Hermes 프로필(default·프로필별)의 예약 작업
+            Hermes 프로필의 예약 작업 + macOS crontab/launchd (읽기 전용)
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -179,6 +198,45 @@ export default function CronJobsPage() {
         </div>
       </div>
 
+      {/* Source filter */}
+      <div className="flex flex-wrap gap-2 mb-4 md:mb-6">
+        {(Object.keys(SOURCE_FILTER_LABEL) as SourceFilter[]).map((key) => (
+          <button
+            key={key}
+            onClick={() => setSourceFilter(key)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.4rem 0.85rem',
+              borderRadius: '9999px',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              border: `1px solid ${sourceFilter === key ? 'var(--accent)' : 'var(--border)'}`,
+              backgroundColor: sourceFilter === key
+                ? 'color-mix(in srgb, var(--accent) 15%, transparent)'
+                : 'var(--card)',
+              color: sourceFilter === key ? 'var(--accent)' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            {SOURCE_FILTER_LABEL[key]}
+            <span
+              style={{
+                fontSize: '0.7rem',
+                padding: '0.05rem 0.4rem',
+                borderRadius: '9999px',
+                backgroundColor: 'rgba(42, 42, 42, 0.5)',
+                color: 'var(--text-muted)',
+              }}
+            >
+              {sourceCounts[key]}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-8">
         <div style={{
@@ -194,7 +252,7 @@ export default function CronJobsPage() {
             <Clock className="w-6 h-6" style={{ color: 'var(--info)' }} />
           </div>
           <div>
-            <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>{jobs.length}</p>
+            <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>{filteredJobs.length}</p>
             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Total Jobs</p>
           </div>
         </div>
@@ -263,14 +321,16 @@ export default function CronJobsPage() {
             borderRadius: '50%', animation: 'spin 1s linear infinite'
           }} />
         </div>
-      ) : jobs.length === 0 ? (
+      ) : filteredJobs.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '4rem 0' }}>
           <Clock className="w-8 h-8 mx-auto mb-4" style={{ color: 'var(--text-muted)' }} />
           <h3 style={{ fontSize: '1.125rem', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-            No cron jobs found
+            {jobs.length === 0 ? "No cron jobs found" : `"${SOURCE_FILTER_LABEL[sourceFilter]}" 잡 없음`}
           </h3>
           <p style={{ color: 'var(--text-secondary)' }}>
-            텔레그램 또는 `hermes cron create`로 예약 작업을 만드세요
+            {jobs.length === 0
+              ? "텔레그램 또는 `hermes cron create`로 예약 작업을 만드세요"
+              : "다른 필터를 선택해보세요"}
           </p>
         </div>
       ) : viewMode === "timeline" ? (
@@ -317,12 +377,12 @@ export default function CronJobsPage() {
               All times in local timezone
             </span>
           </div>
-          <CronWeeklyTimeline jobs={jobs} />
+          <CronWeeklyTimeline jobs={filteredJobs} />
         </div>
       ) : (
         /* Cards View */
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-          {jobs.map((job) => (
+          {filteredJobs.map((job) => (
             <div key={job.id} style={{ position: 'relative' }}>
               <CronJobCard
                 job={job}

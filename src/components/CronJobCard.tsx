@@ -30,6 +30,17 @@ export interface CronJob {
   lastRun: string | null;
   sessionTarget: string;
   payload: Record<string, unknown>;
+  /** Where this job came from — shown as a badge. */
+  source?: "hermes" | "crontab" | "launchd";
+  /** Per-action capability flags. Undefined = allowed (keeps old Hermes jobs working
+   *  unchanged); crontab/launchd jobs set these explicitly per what's actually safe:
+   *  crontab has no safe pause path (rewriting the whole file can hang on a macOS
+   *  permission prompt), launchd pause/run go through launchctl, and delete is never
+   *  offered for system jobs (removing a plist/crontab line is a bigger step than
+   *  anyone asked for). */
+  canToggle?: boolean;
+  canRun?: boolean;
+  canDelete?: boolean;
 }
 
 interface RunHistoryEntry {
@@ -53,6 +64,19 @@ interface CronJobCardProps {
 const AGENT_EMOJI: Record<string, string> = {
   default: "🪽",
   songseonwoo: "🤖",
+  system: "⚙️",
+};
+
+const SOURCE_LABEL: Record<string, string> = {
+  hermes: "Hermes",
+  crontab: "crontab",
+  launchd: "launchd",
+};
+
+const SOURCE_COLOR: Record<string, string> = {
+  hermes: "var(--accent)",
+  crontab: "var(--text-muted)",
+  launchd: "var(--text-muted)",
 };
 
 export function CronJobCard({ job, onToggle, onDelete, onRun }: CronJobCardProps) {
@@ -185,45 +209,58 @@ export function CronJobCard({ job, onToggle, onDelete, onRun }: CronJobCardProps
               <span
                 className="text-[10px] md:text-xs px-1.5 md:px-2 py-0.5 rounded-full whitespace-nowrap"
                 style={{
-                  backgroundColor: job.enabled 
-                    ? 'color-mix(in srgb, var(--success) 20%, transparent)' 
+                  backgroundColor: job.enabled
+                    ? 'color-mix(in srgb, var(--success) 20%, transparent)'
                     : 'rgba(42, 42, 42, 0.5)',
                   color: job.enabled ? 'var(--success)' : 'var(--text-secondary)'
                 }}
               >
                 {job.enabled ? "Active" : "Paused"}
               </span>
+              {job.source && (
+                <span
+                  className="text-[10px] md:text-xs px-1.5 md:px-2 py-0.5 rounded-full whitespace-nowrap font-semibold"
+                  style={{
+                    backgroundColor: `color-mix(in srgb, ${SOURCE_COLOR[job.source] || 'var(--text-muted)'} 15%, transparent)`,
+                    color: SOURCE_COLOR[job.source] || 'var(--text-muted)',
+                  }}
+                >
+                  {SOURCE_LABEL[job.source] || job.source}
+                </span>
+              )}
             </div>
             <p className="text-xs md:text-sm mt-0.5 md:mt-1 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
               {job.description}
             </p>
           </div>
 
-          {/* Toggle Button */}
-          <button
-            onClick={handleToggle}
-            disabled={isToggling}
-            title={job.enabled ? "Pause job" : "Enable job"}
-            className="p-1.5 md:p-2 rounded-lg flex-shrink-0"
-            style={{
-              border: 'none',
-              cursor: isToggling ? 'not-allowed' : 'pointer',
-              opacity: isToggling ? 0.5 : 1,
-              backgroundColor: job.enabled 
-                ? 'color-mix(in srgb, var(--success) 20%, transparent)' 
-                : 'rgba(42, 42, 42, 0.5)',
-              color: job.enabled ? 'var(--success)' : 'var(--text-secondary)',
-              transition: 'all 0.2s'
-            }}
-          >
-            {isToggling ? (
-              <div className="w-4 h-4 md:w-5 md:h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            ) : job.enabled ? (
-              <Pause className="w-4 h-4 md:w-5 md:h-5" />
-            ) : (
-              <Play className="w-4 h-4 md:w-5 md:h-5" />
-            )}
-          </button>
+          {/* Toggle Button — hidden where the job's own source has no safe pause path (crontab) */}
+          {job.canToggle !== false && (
+            <button
+              onClick={handleToggle}
+              disabled={isToggling}
+              title={job.enabled ? "Pause job" : "Enable job"}
+              className="p-1.5 md:p-2 rounded-lg flex-shrink-0"
+              style={{
+                border: 'none',
+                cursor: isToggling ? 'not-allowed' : 'pointer',
+                opacity: isToggling ? 0.5 : 1,
+                backgroundColor: job.enabled
+                  ? 'color-mix(in srgb, var(--success) 20%, transparent)'
+                  : 'rgba(42, 42, 42, 0.5)',
+                color: job.enabled ? 'var(--success)' : 'var(--text-secondary)',
+                transition: 'all 0.2s'
+              }}
+            >
+              {isToggling ? (
+                <div className="w-4 h-4 md:w-5 md:h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : job.enabled ? (
+                <Pause className="w-4 h-4 md:w-5 md:h-5" />
+              ) : (
+                <Play className="w-4 h-4 md:w-5 md:h-5" />
+              )}
+            </button>
+          )}
         </div>
 
         {/* Schedule Info */}
@@ -305,20 +342,22 @@ export function CronJobCard({ job, onToggle, onDelete, onRun }: CronJobCardProps
 
         {/* Actions */}
         <div className="flex items-center gap-1 md:gap-2 mt-3 md:mt-4 pt-2 md:pt-4" style={{ borderTop: '1px solid var(--border)' }}>
-          <button
-            onClick={() => onDelete(job.id)}
-            className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 text-xs md:text-sm rounded-lg"
-            style={{
-              color: 'var(--text-secondary)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
-            <span className="hidden sm:inline">Delete</span>
-          </button>
+          {job.canDelete !== false && (
+            <button
+              onClick={() => onDelete(job.id)}
+              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 text-xs md:text-sm rounded-lg"
+              style={{
+                color: 'var(--text-secondary)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+              <span className="hidden sm:inline">Delete</span>
+            </button>
+          )}
 
           {/* History button */}
           <button
@@ -340,7 +379,7 @@ export function CronJobCard({ job, onToggle, onDelete, onRun }: CronJobCardProps
           <div className="flex-1" />
 
           {/* Run Now button */}
-          {onRun && (
+          {onRun && job.canRun !== false && (
             <button
               onClick={handleRun}
               disabled={isRunning}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findJobProfile, runHermesCron } from "@/lib/hermes-cron";
+import { runCrontabJob, launchdRunNow } from "@/lib/system-cron";
 
 async function createNotification(title: string, message: string, type: "info" | "success" | "warning" | "error" = "info") {
   try {
@@ -26,14 +27,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Valid job ID is required" }, { status: 400 });
     }
 
-    const profile = findJobProfile(id);
-    if (!profile) {
-      return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    }
+    let output: string;
 
-    // Agent-mode jobs run synchronously and can take a while (real LLM turn) —
-    // give this much more room than the other cron CLI calls (pause/resume/remove).
-    const output = await runHermesCron(profile.path, ["run", id], 180000);
+    if (id.startsWith("cron-")) {
+      output = await runCrontabJob(id);
+    } else if (id.startsWith("launchd-")) {
+      output = await launchdRunNow(id);
+    } else {
+      const profile = findJobProfile(id);
+      if (!profile) {
+        return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      }
+      // Agent-mode jobs run synchronously and can take a while (real LLM turn) —
+      // give this much more room than the other cron CLI calls (pause/resume/remove).
+      output = await runHermesCron(profile.path, ["run", id], 180000);
+    }
 
     await createNotification(
       "Cron Job Triggered",

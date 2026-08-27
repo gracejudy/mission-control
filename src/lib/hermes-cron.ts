@@ -57,6 +57,14 @@ export interface CronJob {
   lastRun: string | null;
   sessionTarget: string;
   payload: Record<string, unknown>;
+  // Mirrors CronJobCard's CronJob shape (see components/CronJobCard.tsx) — kept as a
+  // separate declaration here rather than a shared import, matching how this file
+  // already predates that split. Hermes jobs just set `source`; capability flags stay
+  // undefined so CronJobCard's `!== false` checks default them to allowed, unchanged.
+  source?: "hermes" | "crontab" | "launchd";
+  canToggle?: boolean;
+  canRun?: boolean;
+  canDelete?: boolean;
 }
 
 function jobsPath(profilePath: string): string {
@@ -91,6 +99,7 @@ function mapJob(profile: HermesWorkspace, job: RawHermesJob): CronJob {
     lastRun: job.last_run_at || null,
     sessionTarget,
     payload: { profile: profile.id, ...job },
+    source: "hermes",
   };
 }
 
