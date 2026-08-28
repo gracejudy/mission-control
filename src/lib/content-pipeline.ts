@@ -11,6 +11,7 @@ export const DRAFTS_DIR = path.join(CONTENT_PIPELINE_DIR, 'drafts');
 export const TASKS_DIR = path.join(CONTENT_PIPELINE_DIR, 'tasks');
 export const AUTOMATION_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'automation.json');
 export const AFFILIATE_LINKS_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'affiliate-links.json');
+export const AFFILIATE_PROGRAMS_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'affiliate-programs.json');
 export const STRATEGY_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'strategy.json');
 export const WATCHER_SCRIPT_PATH = path.join(CONTENT_PIPELINE_DIR, 'scripts', 'queue-watcher.sh');
 export const AUTOMATION_DURATION_MS = 60 * 60 * 1000;
@@ -38,13 +39,16 @@ export interface StatusEntry {
   status: IdeaStatus;
   requestedAt?: string;
   draftFile?: string;
-  evaluationFile?: string;
   publishedFile?: string;
   publishedUrl?: string;
   publishedAt?: string;
   publishedTitle?: string;
   /** 2026-08-21: 주간 성과 리뷰(workflow.md 4단계)에서 Claude가 판단해 세팅 — 사람이 미션보드에서 처리하면 지운다 */
   actionNeeded?: ActionNeeded;
+  /** 2026-08-27: 재발행 요청 시 사람이 남긴 반영 지침. buildTaskContent가 기존 초안 전문과 함께 task 파일에 싣는다 — 무작정 전면 재작성이 아니라 이 지침 기준 개정. */
+  redraftMemo?: string;
+  /** 2026-08-27: 발행 완료 시 선택한 제휴 프로그램(예: "세시간전", "네이버 브랜드커넥트"). affiliate-programs.json의 값 중 하나이거나, 그 자리에서 새로 추가한 이름. */
+  affiliateProgram?: string;
 }
 
 export type StatusMap = Record<string, StatusEntry>;
@@ -242,10 +246,48 @@ function timestampSlug(date: Date): string {
   return date.toISOString().replace(/[:.]/g, '-').slice(0, 19);
 }
 
-function buildTaskContent(idea: RawIdea, now: Date): string {
+export interface DraftRequestOptions {
+  /** 재발행 시 사람이 남긴 반영 지침. 없으면 자유 재작성(기존 동작과 동일). */
+  memo?: string;
+  /** 재발행 시 기존 초안 전문 — 지침을 "무엇에" 반영할지의 기준점으로 task 파일에 그대로 싣는다. */
+  previousDraft?: string;
+  /** 있으면 새 파일명을 짓지 않고 이 경로를 그대로 덮어쓰도록 지시 — 재발행마다 파일이 늘어나는 걸 막는다. */
+  previousDraftFile?: string;
+}
+
+function buildTaskContent(idea: RawIdea, now: Date, opts: DraftRequestOptions = {}): string {
   const metaLines = Object.entries(idea.extra)
     .map(([key, value]) => `- ${key}: ${value}`)
     .join('\n');
+
+  const memo = opts.memo?.trim();
+  const saveTarget = opts.previousDraftFile
+    ? `\`projects/content-pipeline/${opts.previousDraftFile}\` (기존 파일 그대로 덮어쓴다 — 새 파일명을 짓지 않는다)`
+    : `\`projects/content-pipeline/drafts/${idea.id}-{설명slug}.txt\``;
+
+  const revisionSection = opts.previousDraft
+    ? `
+## 기존 초안 전문 (아래 지침을 반영해서 고칠 대상 — 무작정 새로 쓰지 않는다)
+
+\`\`\`
+${opts.previousDraft}
+\`\`\`
+${
+  memo
+    ? `
+## 재작성 지침 (사람이 남긴 피드백 — 반드시 반영)
+
+${memo}
+
+**이건 전면 재작성 요청이 아니라 위 지침을 반영한 개정 요청이다.** 지침에서 언급 안 된 부분(구조·톤·이미 잘 된 문장·제휴링크 위치)은 그대로 유지한다. 지침 내용만 정확히 반영해서 고친다.
+`
+    : `
+## 재작성 지침
+사람이 별도 메모를 남기지 않았다 — 기존 초안을 참고해서 자유롭게 개선한다.
+`
+}
+`
+    : '';
 
   return `# 초안 요청 — ${idea.title}
 
@@ -256,11 +298,11 @@ _아이디어 ID: ${idea.id} | 타입: ${idea.type}_
 - 제목 아이디어: ${idea.title}
 - meta: ${idea.meta}
 ${metaLines}
-
+${revisionSection}
 ## 지침
-1. \`projects/content-pipeline/style_guide.md\`의 타입 ${idea.type} 구조/톤/규칙을 따라 초안 작성
-2. 완성된 초안을 \`projects/content-pipeline/drafts/${idea.id}-{설명slug}.txt\`로 저장
-3. \`projects/content-pipeline/status.json\`의 \`"${idea.id}"\` 항목을 \`{status:"draft", draftFile:"drafts/${idea.id}-{설명slug}.txt"}\`로 갱신 (기존 필드 유지, 이 두 키만 덮어씀)
+1. \`projects/content-pipeline/style_guide.md\`의 타입 ${idea.type} 구조/톤/규칙을 따라 초안 작성(위 재작성 지침이 있으면 그것부터 반영)
+2. 완성된 초안을 ${saveTarget}로 저장
+3. \`projects/content-pipeline/status.json\`의 \`"${idea.id}"\` 항목을 \`{status:"draft", draftFile:"..."}\`로 갱신 (기존 필드 유지, 이 두 키만 덮어씀)
 4. 이 파일을 \`projects/content-pipeline/tasks/_done/\`로 이동
 
 알림 발송은 워쳐 스크립트가 별도로 처리하므로 신경 쓰지 않아도 됨.
@@ -273,32 +315,25 @@ ${metaLines}
 }
 
 /** Writes a queue request file for `idea` and flips its status to "requested". Shared by fresh requests and redraft. */
-export async function queueDraftRequest(idea: RawIdea): Promise<{ requestedAt: string }> {
+export async function queueDraftRequest(
+  idea: RawIdea,
+  opts: DraftRequestOptions = {}
+): Promise<{ requestedAt: string }> {
   const now = new Date();
   const taskFile = path.join(TASKS_DIR, `${timestampSlug(now)}-${idea.id}.md`);
 
   await fs.mkdir(TASKS_DIR, { recursive: true });
-  await fs.writeFile(taskFile, buildTaskContent(idea, now));
+  await fs.writeFile(taskFile, buildTaskContent(idea, now, opts));
 
   const requestedAt = now.toISOString();
   await updateStatus(idea.id, {
     status: 'requested',
     requestedAt,
     draftFile: undefined,
-    evaluationFile: undefined,
+    redraftMemo: opts.memo?.trim() || undefined,
   });
 
   return { requestedAt };
-}
-
-/** Best-effort delete of a StatusEntry file (draftFile or evaluationFile). Missing file is not an error. */
-export async function deleteFileIfExists(relPath: string | undefined): Promise<void> {
-  if (!relPath) return;
-  try {
-    await fs.unlink(resolveInPipelineDir(relPath));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
 }
 
 // Serializes all status.json reads/writes within this process so concurrent
@@ -440,6 +475,45 @@ export async function readAffiliateLinks(): Promise<AffiliateLinksData> {
   } catch {
     return { updatedAt: null, links: [] };
   }
+}
+
+// Serializes affiliate-programs.json reads/writes — same single-user-local-tool rationale as
+// ideasMutex/statusMutex above.
+let affiliateProgramsMutex: Promise<unknown> = Promise.resolve();
+
+function withAffiliateProgramsLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = affiliateProgramsMutex.then(fn, fn);
+  affiliateProgramsMutex = result.catch(() => undefined);
+  return result;
+}
+
+async function loadAffiliateProgramsUnlocked(): Promise<string[]> {
+  try {
+    const data = await fs.readFile(AFFILIATE_PROGRAMS_JSON_PATH, 'utf-8');
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 발행 완료 폼의 제휴사 선택지 목록. 최초 실행 등 파일이 없으면 빈 배열. */
+export function readAffiliatePrograms(): Promise<string[]> {
+  return withAffiliateProgramsLock(loadAffiliateProgramsUnlocked);
+}
+
+/** 새 제휴사 이름을 목록에 추가한다(중복/공백은 무시). 발행 폼에서 "제휴사 추가"로 바로 호출됨. */
+export function addAffiliateProgram(name: string): Promise<string[]> {
+  return withAffiliateProgramsLock(async () => {
+    const trimmed = name.trim();
+    const list = await loadAffiliateProgramsUnlocked();
+    if (!trimmed || list.includes(trimmed)) return list;
+    const next = [...list, trimmed];
+    const tmpPath = `${AFFILIATE_PROGRAMS_JSON_PATH}.tmp`;
+    await fs.writeFile(tmpPath, JSON.stringify(next, null, 2));
+    await fs.rename(tmpPath, AFFILIATE_PROGRAMS_JSON_PATH);
+    return next;
+  });
 }
 
 export type StrategyMap = Record<string, Record<string, string>>;

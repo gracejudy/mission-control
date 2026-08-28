@@ -76,6 +76,10 @@ interface Idea {
   /** 타겟/키워드/링크위치/제휴플랫폼 등 — Claude 세션이 strategy.json에 직접 기록.
    *  초안 없으면 데이터기반 제안, 초안 있으면 실제 작성 기준. 필드는 계속 늘어날 수 있음(열린 맵). */
   strategy?: Record<string, string> | null;
+  /** 가장 최근 재발행 요청에 남긴 반영 지침. 처리 완료 후에도 참고용으로 남아있음. */
+  redraftMemo?: string;
+  /** 발행 완료 시 선택한 제휴 프로그램(예: "세시간전", "네이버 브랜드커넥트"). */
+  affiliateProgram?: string;
 }
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -259,12 +263,20 @@ export default function ContentPipelinePage() {
   const [draftContent, setDraftContent] = useState("");
   const [draftLoading, setDraftLoading] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
-  const [evaluation, setEvaluation] = useState<{ filename: string; content: string } | null>(null);
 
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [publishUrl, setPublishUrl] = useState("");
+  const [publishProgram, setPublishProgram] = useState("");
   const [publishSubmitting, setPublishSubmitting] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+
+  const [affiliatePrograms, setAffiliatePrograms] = useState<string[]>([]);
+  const [addingProgram, setAddingProgram] = useState(false);
+  const [newProgramName, setNewProgramName] = useState("");
+  const [programSubmitting, setProgramSubmitting] = useState(false);
+
+  const [redraftingId, setRedraftingId] = useState<string | null>(null);
+  const [redraftMemo, setRedraftMemo] = useState("");
 
   const [automation, setAutomation] = useState<AutomationState | null>(null);
   const [automationBusy, setAutomationBusy] = useState(false);
@@ -325,6 +337,44 @@ export default function ContentPipelinePage() {
         // 조회 실패는 조용히 무시 — 섹션이 비어있는 채로 표시됨
       });
   }, []);
+
+  const fetchAffiliatePrograms = useCallback(async () => {
+    try {
+      const res = await fetch("/api/content-pipeline/affiliate-programs");
+      if (res.ok) {
+        const data = await res.json();
+        setAffiliatePrograms(data.programs ?? []);
+      }
+    } catch {
+      // 조회 실패는 조용히 무시 — 발행 폼에서 목록이 비어있으면 "새 제휴사 추가"로 대체 가능
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAffiliatePrograms();
+  }, [fetchAffiliatePrograms]);
+
+  const submitNewProgram = async () => {
+    const trimmed = newProgramName.trim();
+    if (!trimmed) return;
+    setProgramSubmitting(true);
+    try {
+      const res = await fetch("/api/content-pipeline/affiliate-programs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAffiliatePrograms(data.programs ?? []);
+        setPublishProgram(trimmed);
+        setAddingProgram(false);
+        setNewProgramName("");
+      }
+    } finally {
+      setProgramSubmitting(false);
+    }
+  };
 
   const clearActionNeeded = async (id: string) => {
     try {
@@ -462,15 +512,24 @@ export default function ContentPipelinePage() {
     }
   };
 
-  const redraft = async (id: string) => {
+  const openRedraftForm = (id: string) => {
+    setRedraftingId(id);
+    setRedraftMemo("");
+  };
+
+  const redraft = async (id: string, memo: string) => {
     setRequestingId(id);
     try {
       const res = await fetch("/api/content-pipeline/redraft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ideaId: id }),
+        body: JSON.stringify({ ideaId: id, memo }),
       });
-      if (res.ok) await fetchIdeas();
+      if (res.ok) {
+        setRedraftingId(null);
+        setRedraftMemo("");
+        await fetchIdeas();
+      }
     } finally {
       setRequestingId(null);
     }
@@ -480,13 +539,11 @@ export default function ContentPipelinePage() {
     setEditingId(idea.id);
     setPublishingId(null);
     setDraftLoading(true);
-    setEvaluation(null);
     try {
       const res = await fetch(`/api/content-pipeline/draft/${idea.id}`);
       if (res.ok) {
         const data = await res.json();
         setDraftContent(data.content ?? "");
-        setEvaluation(data.evaluation ?? null);
       }
     } finally {
       setDraftLoading(false);
@@ -509,6 +566,9 @@ export default function ContentPipelinePage() {
   const openPublishForm = (idea: Idea) => {
     setPublishingId(idea.id);
     setPublishUrl("");
+    setPublishProgram(idea.affiliateProgram ?? "");
+    setAddingProgram(false);
+    setNewProgramName("");
     setPublishError(null);
   };
 
@@ -520,7 +580,7 @@ export default function ContentPipelinePage() {
       const res = await fetch(`/api/content-pipeline/publish/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: publishUrl }),
+        body: JSON.stringify({ url: publishUrl, affiliateProgram: publishProgram || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -886,6 +946,19 @@ export default function ContentPipelinePage() {
                             </div>
                           )}
 
+                          {idea.redraftMemo && (
+                            <div
+                              className="mb-2 px-2 py-1.5 rounded-lg text-xs leading-relaxed"
+                              style={{
+                                backgroundColor: "var(--surface)",
+                                color: "var(--text-secondary)",
+                              }}
+                              title="마지막 재발행 요청 때 남긴 반영 지침"
+                            >
+                              📝 {idea.redraftMemo}
+                            </div>
+                          )}
+
                           <div
                             className="pt-3 mt-1 mb-2"
                             style={{ borderTop: `1px solid ${CARD_DIVIDER}` }}
@@ -950,31 +1023,74 @@ export default function ContentPipelinePage() {
                                 초안 작성 대기중
                               </div>
                             )}
-                            {idea.status === "draft" && (
+                            {idea.status === "draft" && redraftingId !== idea.id && (
                               <div className="flex items-center gap-2">
                                 <PrimaryButton onClick={() => openEditor(idea)} color="var(--info)" icon={PenLine}>
                                   편집
                                 </PrimaryButton>
                                 <PrimaryButton
-                                  onClick={() => redraft(idea.id)}
-                                  disabled={requestingId === idea.id}
+                                  onClick={() => openRedraftForm(idea.id)}
                                   color="var(--text-muted)"
                                   icon={RotateCw}
                                 >
-                                  {requestingId === idea.id ? "요청 중..." : "재발행"}
+                                  재발행
                                 </PrimaryButton>
                               </div>
                             )}
+                            {idea.status === "draft" && redraftingId === idea.id && (
+                              <div className="flex flex-col gap-1.5">
+                                <textarea
+                                  value={redraftMemo}
+                                  onChange={(e) => setRedraftMemo(e.target.value)}
+                                  placeholder="반영할 피드백을 적어주세요 (비워두면 자유 재작성 — 기존 초안을 무작정 갈아엎지 않고, 여기 적은 내용만 반영해서 고칩니다)"
+                                  rows={4}
+                                  autoFocus
+                                  className="w-full p-2 rounded-lg text-xs leading-relaxed"
+                                  style={{
+                                    backgroundColor: "var(--surface)",
+                                    border: "1px solid var(--border)",
+                                    color: "var(--text-primary)",
+                                  }}
+                                />
+                                <div className="flex items-center gap-2">
+                                  <PrimaryButton
+                                    onClick={() => redraft(idea.id, redraftMemo)}
+                                    disabled={requestingId === idea.id}
+                                    color="var(--accent)"
+                                    icon={RotateCw}
+                                  >
+                                    {requestingId === idea.id ? "요청 중..." : "재발행 요청"}
+                                  </PrimaryButton>
+                                  <button
+                                    onClick={() => setRedraftingId(null)}
+                                    className="text-xs"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                             {idea.status === "published" && idea.publishedUrl && (
-                              <a
-                                href={idea.publishedUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs inline-flex items-center gap-1 font-medium"
-                                style={{ color: "var(--success)" }}
-                              >
-                                <ExternalLink className="w-3 h-3" /> 발행글 보기 ({idea.publishedAt})
-                              </a>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <a
+                                  href={idea.publishedUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs inline-flex items-center gap-1 font-medium"
+                                  style={{ color: "var(--success)" }}
+                                >
+                                  <ExternalLink className="w-3 h-3" /> 발행글 보기 ({idea.publishedAt})
+                                </a>
+                                {idea.affiliateProgram && (
+                                  <span
+                                    className="text-[11px] px-2 py-0.5 rounded-md"
+                                    style={{ backgroundColor: "var(--surface)", color: LABEL_DIM }}
+                                  >
+                                    {idea.affiliateProgram}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -1173,30 +1289,6 @@ export default function ContentPipelinePage() {
                   발행 완료로 표시
                 </PrimaryButton>
               </div>
-
-              {evaluation && (
-                <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Search className="w-3.5 h-3.5" style={{ color: "var(--info)" }} />
-                    <h4 className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
-                      조사 방식 평가 (AI가 직접 밝힌 조사 과정·한계 — 편집 대상 아님)
-                    </h4>
-                  </div>
-                  <pre
-                    className="w-full p-3 rounded-lg text-xs leading-relaxed whitespace-pre-wrap"
-                    style={{
-                      backgroundColor: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      color: "var(--text-secondary)",
-                      fontFamily: "var(--font-body)",
-                      maxHeight: 240,
-                      overflowY: "auto",
-                    }}
-                  >
-                    {evaluation.content}
-                  </pre>
-                </div>
-              )}
             </>
           )}
 
@@ -1222,6 +1314,71 @@ export default function ContentPipelinePage() {
                   color: "var(--text-primary)",
                 }}
               />
+
+              <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>
+                제휴사 <span style={{ color: "var(--text-muted)" }}>(선택)</span>
+              </label>
+              {!addingProgram ? (
+                <div className="flex items-center gap-2 mb-3">
+                  <select
+                    value={publishProgram}
+                    onChange={(e) => setPublishProgram(e.target.value)}
+                    className="flex-1 p-2 rounded-lg text-sm"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    <option value="">선택 안 함</option>
+                    {affiliatePrograms.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setAddingProgram(true)}
+                    className="text-xs whitespace-nowrap px-2 py-2 rounded-lg"
+                    style={{ color: "var(--accent)", border: "1px solid var(--border)" }}
+                  >
+                    + 새 제휴사
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mb-3">
+                  <input
+                    value={newProgramName}
+                    onChange={(e) => setNewProgramName(e.target.value)}
+                    placeholder="예: 쿠팡파트너스"
+                    autoFocus
+                    className="flex-1 p-2 rounded-lg text-sm"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                  <PrimaryButton
+                    onClick={submitNewProgram}
+                    disabled={programSubmitting || !newProgramName.trim()}
+                    color="var(--accent)"
+                  >
+                    {programSubmitting ? "추가 중..." : "추가"}
+                  </PrimaryButton>
+                  <button
+                    onClick={() => {
+                      setAddingProgram(false);
+                      setNewProgramName("");
+                    }}
+                    className="text-xs"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    취소
+                  </button>
+                </div>
+              )}
+
               {publishError && (
                 <p className="text-xs mb-3" style={{ color: "var(--error)" }}>
                   {publishError}

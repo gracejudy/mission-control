@@ -17,6 +17,10 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
     const url: string | undefined = body?.url;
+    const affiliateProgram: string | undefined =
+      typeof body?.affiliateProgram === 'string' && body.affiliateProgram.trim()
+        ? body.affiliateProgram.trim()
+        : undefined;
 
     if (!url) {
       return NextResponse.json({ error: 'Missing required field: url' }, { status: 400 });
@@ -40,6 +44,7 @@ export async function POST(
       publishedFile: publishedRelPath,
       publishedUrl: url,
       publishedAt,
+      ...(affiliateProgram ? { affiliateProgram } : {}),
     });
 
     return NextResponse.json({ ideaId: id, ...entry });
