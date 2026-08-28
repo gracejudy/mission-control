@@ -6,6 +6,8 @@ import { BacklogBoard } from "@/components/BacklogBoard";
 import { ProjectScriptCard } from "@/components/ProjectScriptCard";
 import { ProjectScriptModal } from "@/components/ProjectScriptModal";
 import { AddProjectModal } from "@/components/AddProjectModal";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
+import { ProjectDataSection } from "@/components/ProjectDataSection";
 import type { ProjectScriptsRegistry } from "@/lib/project-scripts";
 
 const BACKLOG_TAB = "__backlog__";
@@ -163,17 +165,6 @@ export default function ProjectsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setAddScriptOpen(true)}
-                  className="flex items-center gap-1.5 text-xs md:text-sm"
-                  style={{
-                    padding: "0.5rem 1rem", borderRadius: "0.5rem", backgroundColor: "var(--accent)",
-                    color: "#000", border: "none", cursor: "pointer", fontWeight: 600,
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  스크립트 추가
-                </button>
-                <button
                   onClick={() => setDeleteProjectConfirm(true)}
                   title="이 프로젝트 탭 삭제"
                   className="flex items-center gap-1.5 text-xs"
@@ -211,28 +202,54 @@ export default function ProjectsPage() {
               </div>
             )}
 
-            {activeScripts.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "4rem 0" }}>
-                <Terminal className="w-8 h-8 mx-auto mb-4" style={{ color: "var(--text-muted)" }} />
-                <h3 style={{ fontSize: "1.05rem", fontWeight: 500, color: "var(--text-primary)", marginBottom: "0.5rem" }}>
-                  등록된 스크립트가 없습니다
-                </h3>
-                <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                  &quot;스크립트 추가&quot;로 이 프로젝트에서 실행 가능한 스크립트를 카드로 등록하세요
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-                {activeScripts.map((script) => (
-                  <ProjectScriptCard
-                    key={script.id}
-                    projectId={activeProject.id}
-                    script={script}
-                    onDelete={(scriptId) => handleDeleteScript(activeProject.id, scriptId)}
-                  />
-                ))}
-              </div>
-            )}
+            {/* 상단: 프로젝트별 데이터 뷰 */}
+            <ProjectDataSection projectId={activeProject.id} />
+
+            {/* 하단: 스크립트 실행 카드 (모든 프로젝트 공통 구조) */}
+            <CollapsibleSection
+              key={`scripts-${activeProject.id}`}
+              title="스크립트"
+              defaultOpen={activeScripts.length > 0}
+              badge={
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{activeScripts.length}개</span>
+              }
+              action={
+                <button
+                  onClick={() => setAddScriptOpen(true)}
+                  className="flex items-center gap-1.5 text-xs md:text-sm"
+                  style={{
+                    padding: "0.4rem 0.8rem", borderRadius: "0.5rem", backgroundColor: "var(--accent)",
+                    color: "#000", border: "none", cursor: "pointer", fontWeight: 600,
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  스크립트 추가
+                </button>
+              }
+            >
+              {activeScripts.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "3rem 0" }}>
+                  <Terminal className="w-8 h-8 mx-auto mb-4" style={{ color: "var(--text-muted)" }} />
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 500, color: "var(--text-primary)", marginBottom: "0.5rem" }}>
+                    등록된 스크립트가 없습니다
+                  </h3>
+                  <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                    &quot;스크립트 추가&quot;로 이 프로젝트에서 실행 가능한 스크립트를 카드로 등록하세요
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+                  {activeScripts.map((script) => (
+                    <ProjectScriptCard
+                      key={script.id}
+                      projectId={activeProject.id}
+                      script={script}
+                      onDelete={(scriptId) => handleDeleteScript(activeProject.id, scriptId)}
+                    />
+                  ))}
+                </div>
+              )}
+            </CollapsibleSection>
           </div>
         )}
       </main>
