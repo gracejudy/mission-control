@@ -145,6 +145,12 @@ interface PlistData {
   StartCalendarInterval?: PlistCalendarInterval | PlistCalendarInterval[];
   StartInterval?: number;
   Disabled?: boolean;
+  // Not a launchd key — a convention this codebase adds, mirroring the
+  // "# comment above the line" name/description pair crontab jobs already get
+  // (see parseCrontabLines). First line becomes the card's name, the whole
+  // string becomes its description. Optional; jobs without it just show
+  // Label/command as before.
+  Comment?: string;
 }
 
 const LAUNCH_AGENTS_DIR = path.join(process.env.HOME || "", "Library", "LaunchAgents");
@@ -178,6 +184,9 @@ interface ParsedLaunchdJob {
   scheduleKind: "cron" | "every";
   exprs: string[];
   everyMs?: number;
+  /** First line / full text of an optional Comment key — see PlistData.Comment. */
+  displayName?: string;
+  displayDescription?: string;
 }
 
 async function listLaunchdRaw(): Promise<ParsedLaunchdJob[]> {
@@ -203,6 +212,12 @@ async function listLaunchdRaw(): Promise<ParsedLaunchdJob[]> {
     const command = data.Program || (data.ProgramArguments || []).join(" ") || "?";
     const label = data.Label || file.replace(/\.plist$/, "");
     const enabled = data.Disabled !== true;
+    const commentLines = (data.Comment || "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const displayName = commentLines[0];
+    const displayDescription = commentLines.length > 0 ? commentLines.join(" ") : undefined;
 
     if (data.StartCalendarInterval) {
       const intervals = Array.isArray(data.StartCalendarInterval)
@@ -216,6 +231,8 @@ async function listLaunchdRaw(): Promise<ParsedLaunchdJob[]> {
         enabled,
         scheduleKind: "cron",
         exprs: intervals.map(calendarIntervalToCronExpr),
+        displayName,
+        displayDescription,
       });
     } else if (data.StartInterval) {
       jobs.push({
@@ -227,6 +244,8 @@ async function listLaunchdRaw(): Promise<ParsedLaunchdJob[]> {
         scheduleKind: "every",
         exprs: [],
         everyMs: data.StartInterval * 1000,
+        displayName,
+        displayDescription,
       });
     }
   }
@@ -247,8 +266,10 @@ export async function listLaunchdJobs(): Promise<CronJob[]> {
       return {
         id: j.id,
         agentId: "system",
-        name: j.label,
-        description: j.exprs.length > 1 ? `${j.command} (하루 ${j.exprs.length}회)` : j.command,
+        name: j.displayName || j.label,
+        description:
+          j.displayDescription ||
+          (j.exprs.length > 1 ? `${j.command} (하루 ${j.exprs.length}회)` : j.command),
         schedule: { kind: "cron", expr: j.exprs[0] },
         scheduleDisplay: j.exprs.length > 1 ? j.exprs.join(" | ") : j.exprs[0],
         timezone: "Asia/Seoul",
@@ -267,8 +288,8 @@ export async function listLaunchdJobs(): Promise<CronJob[]> {
     return {
       id: j.id,
       agentId: "system",
-      name: j.label,
-      description: j.command,
+      name: j.displayName || j.label,
+      description: j.displayDescription || j.command,
       schedule: { kind: "every", everyMs: j.everyMs },
       scheduleDisplay: `Every ${(j.everyMs || 0) / 1000}s`,
       timezone: "Asia/Seoul",
