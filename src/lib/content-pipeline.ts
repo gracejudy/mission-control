@@ -11,10 +11,37 @@ export const DRAFTS_DIR = path.join(CONTENT_PIPELINE_DIR, 'drafts');
 export const TASKS_DIR = path.join(CONTENT_PIPELINE_DIR, 'tasks');
 export const AUTOMATION_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'automation.json');
 export const AFFILIATE_LINKS_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'affiliate-links.json');
+export const AFFILIATE_LINKS_BRANDCONNECT_JSON_PATH = path.join(
+  CONTENT_PIPELINE_DIR,
+  'affiliate-links-brandconnect.json'
+);
 export const AFFILIATE_PROGRAMS_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'affiliate-programs.json');
 export const STRATEGY_JSON_PATH = path.join(CONTENT_PIPELINE_DIR, 'strategy.json');
 export const WATCHER_SCRIPT_PATH = path.join(CONTENT_PIPELINE_DIR, 'scripts', 'queue-watcher.sh');
 export const AUTOMATION_DURATION_MS = 60 * 60 * 1000;
+/** 2026-08-29: 데이터 아키텍처 v1(ARCHITECTURE.md) Signal Bus — 모든 수집기가 공통 스키마로 append하는 단일 신호 저장소. */
+export const SIGNALS_JSONL_PATH = path.join(CONTENT_PIPELINE_DIR, 'signals', 'events.jsonl');
+
+export interface SignalRecord {
+  source: string;
+  project: string;
+  entityId: string;
+  metric: string;
+  value: string | number;
+  observedAt: string;
+  collectedAt: string;
+}
+
+/** ARCHITECTURE.md의 Signal Bus에 레코드 한 건을 append한다. 실패해도 호출부(발행 등 핵심 흐름)를 막지 않도록 예외를 삼킨다 — 신호 기록은 부가 정보지 필수 경로가 아니다. */
+export async function emitSignal(record: Omit<SignalRecord, 'collectedAt'>): Promise<void> {
+  try {
+    await fs.mkdir(path.dirname(SIGNALS_JSONL_PATH), { recursive: true });
+    const full: SignalRecord = { ...record, collectedAt: new Date().toISOString() };
+    await fs.appendFile(SIGNALS_JSONL_PATH, JSON.stringify(full) + '\n');
+  } catch (error) {
+    console.error('Failed to emit signal (non-fatal):', error);
+  }
+}
 
 export type IdeaType = 'I' | 'B' | 'A';
 export type IdeaStatus = 'idle' | 'requested' | 'draft' | 'published';
@@ -35,6 +62,15 @@ export interface ActionNeeded {
   flaggedAt: string;
 }
 
+/** 2026-08-29: 데이터 아키텍처 v1 Phase 2 — Signal Bus를 읽고 계산한 actionNeeded 제안. 사람이 적용/무시 전까진 실제 actionNeeded와 별개다(자동 실행 아님). */
+export interface SuggestedAction {
+  type: ActionNeededType;
+  reason: string;
+  confidence: 'high' | 'low';
+  basedOn: string[];
+  computedAt: string;
+}
+
 export interface StatusEntry {
   status: IdeaStatus;
   requestedAt?: string;
@@ -45,10 +81,14 @@ export interface StatusEntry {
   publishedTitle?: string;
   /** 2026-08-21: 주간 성과 리뷰(workflow.md 4단계)에서 Claude가 판단해 세팅 — 사람이 미션보드에서 처리하면 지운다 */
   actionNeeded?: ActionNeeded;
+  /** 2026-08-29: computeSuggestions()가 Signal Bus 기반으로 계산해 채워둔 제안 — actionNeeded가 이미 있으면 계산 안 함(사람 판단 우선). 사람이 "적용"하면 actionNeeded로 승격되고 이 필드는 지워진다. */
+  suggestedActionNeeded?: SuggestedAction;
   /** 2026-08-27: 재발행 요청 시 사람이 남긴 반영 지침. buildTaskContent가 기존 초안 전문과 함께 task 파일에 싣는다 — 무작정 전면 재작성이 아니라 이 지침 기준 개정. */
   redraftMemo?: string;
   /** 2026-08-27: 발행 완료 시 선택한 제휴 프로그램(예: "세시간전", "네이버 브랜드커넥트"). affiliate-programs.json의 값 중 하나이거나, 그 자리에서 새로 추가한 이름. */
   affiliateProgram?: string;
+  /** 2026-09-14: 실제로 이 글에 삽입한 제휴링크 URL(예: https://3ha.in/r/706390). 발행 시점엔 몰라서 나중에 채워지는 경우가 많아 publish API가 아니라 별도 PATCH(affiliate/[id])로만 갱신한다. */
+  affiliateLink?: string;
 }
 
 export type StatusMap = Record<string, StatusEntry>;
@@ -384,6 +424,72 @@ export function mergeIdeaWithStatus(raw: RawIdea, status: StatusMap): Idea {
   return { ...raw, ...entry };
 }
 
+/** Signal Bus(signals/events.jsonl) 전체를 읽는다. 파일이 없거나 줄이 깨져 있어도 조용히 건너뛴다 — 감사용이 아니라 제안 계산용이라 완전성보다 안전이 우선. */
+export async function readSignals(): Promise<SignalRecord[]> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(SIGNALS_JSONL_PATH, 'utf-8');
+  } catch {
+    return [];
+  }
+  const records: SignalRecord[] = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      records.push(JSON.parse(line));
+    } catch {
+      // 손상된 줄 하나 때문에 전체를 못 읽으면 안 되니 건너뛴다
+    }
+  }
+  return records;
+}
+
+/**
+ * 2026-08-29 Phase 2, Rule 1(조회수 기반 review 제안)만 구현. ARCHITECTURE.md 참고.
+ * Rule 2(유입 키워드 → add_link 제안)는 의도적으로 보류 — 3ha 링크가 글 단위로 안 붙어있고(registry.json
+ * "3ha-links" 항목 참고) 유입분석도 사이트 전체 집계라 글 단위 귀속 근거가 약해서, 지금 자동 제안하면
+ * 오탐 위험이 크다고 판단. 데이터가 더 쌓이면 다음 증분으로 추가.
+ */
+export async function computeSuggestions(
+  ideas: RawIdea[],
+  status: StatusMap
+): Promise<Record<string, SuggestedAction>> {
+  const signals = await readSignals();
+  const now = new Date().toISOString();
+  const suggestions: Record<string, SuggestedAction> = {};
+
+  for (const idea of ideas) {
+    const entry = status[idea.id];
+    if (!entry || entry.status !== 'published' || entry.actionNeeded) continue;
+    if (!entry.publishedAt) continue;
+
+    const weeklyViewSignals = signals.filter(
+      (s) => s.entityId === idea.id && s.metric === 'weeklyViews'
+    );
+    if (weeklyViewSignals.length === 0) continue;
+
+    const latest = weeklyViewSignals.reduce((a, b) => (a.observedAt > b.observedAt ? a : b));
+    const value = Number(latest.value);
+    if (Number.isNaN(value)) continue;
+
+    const publishedMs = new Date(entry.publishedAt).getTime();
+    const observedMs = new Date(latest.observedAt).getTime();
+    const daysSincePublish = (observedMs - publishedMs) / (1000 * 60 * 60 * 24);
+
+    if (value <= 2 && daysSincePublish >= 14) {
+      suggestions[idea.id] = {
+        type: 'review',
+        reason: `주간조회수 ${value} (발행 ${Math.round(daysSincePublish)}일 경과 시점 관측) — 정체 여부 검토 필요`,
+        confidence: 'high',
+        basedOn: [`naver-blog-stats: weeklyViews=${latest.value} observedAt=${latest.observedAt}`],
+        computedAt: now,
+      };
+    }
+  }
+
+  return suggestions;
+}
+
 export interface AutomationState {
   enabled: boolean;
   pid: number | null;
@@ -436,33 +542,49 @@ export function writeAutomation(patch: Partial<AutomationState>): Promise<Automa
   });
 }
 
+export type AffiliateLinkSource = '3ha' | 'brandconnect';
+
 export interface AffiliateLink {
-  id: number;
+  id: number | string;
   label: string;
   url: string;
   program: string;
   productTitle: string;
   clicks: number;
-  /** 0~1 비율(예: 0.083 = 8.3%). 3ha API에 데이터 없으면 null. */
+  /** 0~1 비율(예: 0.083 = 8.3%). 소스 API에 데이터 없으면 null. */
   conversionRate: number | null;
   /** ISO 문자열. 클릭 이력 없으면 null. */
   lastClickedAt: string | null;
+  /** '3ha' = 세시간전 API 기반, 'brandconnect' = 네이버 브랜드커넥트 */
+  source: AffiliateLinkSource;
+}
+
+export interface AffiliateLinkSourceMeta {
+  updatedAt: string | null;
+  count: number;
 }
 
 export interface AffiliateLinksData {
+  /** 두 소스 중 가장 최근 갱신 시각(전체 요약용). 개별 소스 갱신 시각은 `sources`에 있음. */
   updatedAt: string | null;
   links: AffiliateLink[];
+  sources: {
+    threeHa: AffiliateLinkSourceMeta;
+    brandconnect: AffiliateLinkSourceMeta;
+  };
 }
 
-/** Reads affiliate-links.json (written by 3ha-links-update.py, run daily by morning-prep). Read-only — mission-control never writes this file. */
-export async function readAffiliateLinks(): Promise<AffiliateLinksData> {
+async function readAffiliateLinksFile(
+  filePath: string,
+  source: AffiliateLinkSource
+): Promise<{ updatedAt: string | null; links: AffiliateLink[] }> {
   try {
-    const data = await fs.readFile(AFFILIATE_LINKS_JSON_PATH, 'utf-8');
+    const data = await fs.readFile(filePath, 'utf-8');
     const parsed = JSON.parse(data);
     const rawLinks: Record<string, unknown>[] = parsed.links ?? [];
     // conversionRate/lastClickedAt는 2026-08-24에 추가된 필드 — 갱신 전 스냅샷엔 없을 수 있어 기본값 처리
     const links: AffiliateLink[] = rawLinks.map((l) => ({
-      id: l.id as number,
+      id: l.id as number | string,
       label: l.label as string,
       url: l.url as string,
       program: l.program as string,
@@ -470,11 +592,38 @@ export async function readAffiliateLinks(): Promise<AffiliateLinksData> {
       clicks: (l.clicks as number) ?? 0,
       conversionRate: (l.conversionRate as number | null | undefined) ?? null,
       lastClickedAt: (l.lastClickedAt as string | null | undefined) ?? null,
+      source,
     }));
     return { updatedAt: parsed.updatedAt ?? null, links };
   } catch {
     return { updatedAt: null, links: [] };
   }
+}
+
+/**
+ * Reads and merges affiliate-links.json(3ha, 3ha-links-update.py)와
+ * affiliate-links-brandconnect.json(네이버 브랜드커넥트, naver-brandconnect-links-update.js) —
+ * 둘 다 morning-prep이 매일 9:30에 실행해 갱신한다.
+ * 두 파일 모두 read-only — mission-control은 이 파일들을 쓰지 않는다.
+ */
+export async function readAffiliateLinks(): Promise<AffiliateLinksData> {
+  const [threeHa, brandconnect] = await Promise.all([
+    readAffiliateLinksFile(AFFILIATE_LINKS_JSON_PATH, '3ha'),
+    readAffiliateLinksFile(AFFILIATE_LINKS_BRANDCONNECT_JSON_PATH, 'brandconnect'),
+  ]);
+  const updatedAt =
+    [threeHa.updatedAt, brandconnect.updatedAt]
+      .filter((v): v is string => !!v)
+      .sort()
+      .pop() ?? null;
+  return {
+    updatedAt,
+    links: [...threeHa.links, ...brandconnect.links],
+    sources: {
+      threeHa: { updatedAt: threeHa.updatedAt, count: threeHa.links.length },
+      brandconnect: { updatedAt: brandconnect.updatedAt, count: brandconnect.links.length },
+    },
+  };
 }
 
 // Serializes affiliate-programs.json reads/writes — same single-user-local-tool rationale as

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
-import { updateStatus, DRAFTS_DIR, resolveInPipelineDir, fetchNaverPost } from '@/lib/content-pipeline';
+import { updateStatus, DRAFTS_DIR, resolveInPipelineDir, fetchNaverPost, emitSignal } from '@/lib/content-pipeline';
 import path from 'path';
 
 export const dynamic = 'force-dynamic';
@@ -45,6 +45,15 @@ export async function POST(
       publishedUrl: url,
       publishedAt,
       ...(affiliateProgram ? { affiliateProgram } : {}),
+    });
+
+    await emitSignal({
+      source: 'pipeline',
+      project: 'content-pipeline',
+      entityId: id,
+      metric: 'published',
+      value: url,
+      observedAt: publishedAt,
     });
 
     return NextResponse.json({ ideaId: id, ...entry });

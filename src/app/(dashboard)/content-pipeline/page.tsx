@@ -27,8 +27,10 @@ import {
   Link2,
 } from "lucide-react";
 
+type AffiliateLinkSource = "3ha" | "brandconnect";
+
 interface AffiliateLink {
-  id: number;
+  id: number | string;
   label: string;
   url: string;
   program: string;
@@ -36,11 +38,21 @@ interface AffiliateLink {
   clicks: number;
   conversionRate: number | null;
   lastClickedAt: string | null;
+  source: AffiliateLinkSource;
+}
+
+interface AffiliateLinkSourceMeta {
+  updatedAt: string | null;
+  count: number;
 }
 
 interface AffiliateLinksData {
   updatedAt: string | null;
   links: AffiliateLink[];
+  sources: {
+    threeHa: AffiliateLinkSourceMeta;
+    brandconnect: AffiliateLinkSourceMeta;
+  };
 }
 
 interface AutomationState {
@@ -59,6 +71,14 @@ interface ActionNeeded {
   flaggedAt: string;
 }
 
+interface SuggestedAction {
+  type: "add_link" | "republish" | "review";
+  reason: string;
+  confidence: "high" | "low";
+  basedOn: string[];
+  computedAt: string;
+}
+
 interface Idea {
   id: string;
   type: "I" | "B" | "A";
@@ -73,6 +93,8 @@ interface Idea {
   publishedAt?: string;
   publishedTitle?: string;
   actionNeeded?: ActionNeeded;
+  /** 2026-08-29: Signal Bus 기반 자동 제안(Phase 2) — actionNeeded가 이미 있으면 계산 안 됨. */
+  suggestedActionNeeded?: SuggestedAction;
   /** 타겟/키워드/링크위치/제휴플랫폼 등 — Claude 세션이 strategy.json에 직접 기록.
    *  초안 없으면 데이터기반 제안, 초안 있으면 실제 작성 기준. 필드는 계속 늘어날 수 있음(열린 맵). */
   strategy?: Record<string, string> | null;
@@ -80,6 +102,8 @@ interface Idea {
   redraftMemo?: string;
   /** 발행 완료 시 선택한 제휴 프로그램(예: "세시간전", "네이버 브랜드커넥트"). */
   affiliateProgram?: string;
+  /** 실제로 이 글에 삽입한 제휴링크 URL. */
+  affiliateLink?: string;
 }
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -252,6 +276,116 @@ function PrimaryButton({
   );
 }
 
+/** "내 제휴링크" 패널 안에서 세시간전 / 네이버 브랜드커넥트를 시각적으로 분리된 두 그룹으로 렌더링 */
+function AffiliateLinkGroup({
+  title,
+  links,
+  updatedAt,
+  copiedLinkId,
+  onCopy,
+}: {
+  title: string;
+  links: AffiliateLink[];
+  updatedAt: string | null;
+  copiedLinkId: number | string | null;
+  onCopy: (link: AffiliateLink) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2 px-1">
+        <span className="text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+          {title} ({links.length}개)
+        </span>
+        {updatedAt && (
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            ·{" "}
+            {new Date(updatedAt).toLocaleString("ko-KR", {
+              month: "numeric",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}{" "}
+            갱신
+          </span>
+        )}
+      </div>
+      {links.length === 0 ? (
+        <div
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ backgroundColor: "var(--surface)", color: "var(--text-muted)" }}
+        >
+          아직 등록된 링크 없음
+        </div>
+      ) : (
+        links.map((link) => (
+          <div
+            key={`${link.source}-${link.id}`}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 rounded-lg text-sm"
+            style={{ backgroundColor: "var(--surface)" }}
+          >
+            <span
+              className="text-[11px] px-1.5 py-0.5 rounded flex-shrink-0"
+              style={{ backgroundColor: "var(--card)", color: "var(--text-muted)" }}
+            >
+              {link.program}
+            </span>
+            <span className="flex-1 min-w-[100px] truncate" style={{ color: "var(--text-primary)" }}>
+              {link.label}
+            </span>
+            <div className="flex items-center gap-3 text-[11px] font-mono flex-shrink-0">
+              <span title="클릭 수">
+                <span style={{ color: LABEL_DIM }}>클릭 </span>
+                <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+                  {link.clicks}
+                </span>
+              </span>
+              <span title="판매전환율">
+                <span style={{ color: LABEL_DIM }}>전환 </span>
+                <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+                  {link.conversionRate != null ? `${(link.conversionRate * 100).toFixed(1)}%` : "—"}
+                </span>
+              </span>
+              <span title="최근 클릭일">
+                <span style={{ color: LABEL_DIM }}>최근 </span>
+                <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+                  {link.lastClickedAt
+                    ? new Date(link.lastClickedAt).toLocaleDateString("ko-KR", {
+                        month: "numeric",
+                        day: "numeric",
+                      })
+                    : "—"}
+                </span>
+              </span>
+            </div>
+            <span className="font-mono text-xs flex-shrink-0" style={{ color: "var(--text-secondary)" }}>
+              {link.url}
+            </span>
+            <button
+              onClick={() => onCopy(link)}
+              className="text-xs font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 flex-shrink-0"
+              style={{
+                backgroundColor: copiedLinkId === link.id ? "var(--success)" : "var(--card)",
+                color: copiedLinkId === link.id ? "#fff" : "var(--text-secondary)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              {copiedLinkId === link.id ? (
+                <>
+                  <Check className="w-3 h-3" /> 복사됨
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" /> 복사
+                </>
+              )}
+            </button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 export default function ContentPipelinePage() {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
@@ -271,6 +405,11 @@ export default function ContentPipelinePage() {
   const [publishError, setPublishError] = useState<string | null>(null);
 
   const [affiliatePrograms, setAffiliatePrograms] = useState<string[]>([]);
+
+  const [editingAffiliateId, setEditingAffiliateId] = useState<string | null>(null);
+  const [affiliateProgramInput, setAffiliateProgramInput] = useState("");
+  const [affiliateLinkInput, setAffiliateLinkInput] = useState("");
+  const [affiliateSaving, setAffiliateSaving] = useState(false);
   const [addingProgram, setAddingProgram] = useState(false);
   const [newProgramName, setNewProgramName] = useState("");
   const [programSubmitting, setProgramSubmitting] = useState(false);
@@ -280,11 +419,12 @@ export default function ContentPipelinePage() {
 
   const [automation, setAutomation] = useState<AutomationState | null>(null);
   const [automationBusy, setAutomationBusy] = useState(false);
+  const [suggestBusy, setSuggestBusy] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLinksData | null>(null);
   const [linksExpanded, setLinksExpanded] = useState(false);
-  const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
+  const [copiedLinkId, setCopiedLinkId] = useState<number | string | null>(null);
 
   const [adding, setAdding] = useState(false);
   const [newType, setNewType] = useState<Idea["type"]>("I");
@@ -382,6 +522,36 @@ export default function ContentPipelinePage() {
       if (res.ok) await fetchIdeas();
     } catch {
       // 실패해도 조용히 무시 — 다음 fetchIdeas 폴링에서 여전히 보이면 사용자가 재시도 가능
+    }
+  };
+
+  const refreshSuggestions = async () => {
+    setSuggestBusy(true);
+    try {
+      const res = await fetch("/api/content-pipeline/action-needed/suggest", { method: "POST" });
+      if (res.ok) await fetchIdeas();
+    } catch {
+      // 무시 — 사람이 버튼을 다시 누르면 됨
+    } finally {
+      setSuggestBusy(false);
+    }
+  };
+
+  const applySuggestion = async (id: string) => {
+    try {
+      const res = await fetch(`/api/content-pipeline/action-needed/${id}`, { method: "POST" });
+      if (res.ok) await fetchIdeas();
+    } catch {
+      // 무시
+    }
+  };
+
+  const dismissSuggestion = async (id: string) => {
+    try {
+      const res = await fetch(`/api/content-pipeline/action-needed/${id}/suggestion`, { method: "DELETE" });
+      if (res.ok) await fetchIdeas();
+    } catch {
+      // 무시
     }
   };
 
@@ -597,6 +767,32 @@ export default function ContentPipelinePage() {
     }
   };
 
+  const openAffiliateEditor = (idea: Idea) => {
+    setEditingAffiliateId(idea.id);
+    setAffiliateProgramInput(idea.affiliateProgram ?? "");
+    setAffiliateLinkInput(idea.affiliateLink ?? "");
+  };
+
+  const saveAffiliateInfo = async (id: string) => {
+    setAffiliateSaving(true);
+    try {
+      const res = await fetch(`/api/content-pipeline/affiliate/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          affiliateProgram: affiliateProgramInput || undefined,
+          affiliateLink: affiliateLinkInput || undefined,
+        }),
+      });
+      if (res.ok) {
+        setEditingAffiliateId(null);
+        await fetchIdeas();
+      }
+    } finally {
+      setAffiliateSaving(false);
+    }
+  };
+
   // 상단 스탯 타일과 동일한 기준 — idle/requested는 아직 초안 텍스트가 없어 "생성 전"으로 묶는다
   const matchesStatusFilter = useCallback(
     (idea: Idea) => {
@@ -641,8 +837,20 @@ export default function ContentPipelinePage() {
 
   const editingIdea = ideas.find((i) => i.id === editingId) ?? null;
 
-  const sortedAffiliateLinks = useMemo(
-    () => (affiliateLinks?.links ?? []).slice().sort((a, b) => b.clicks - a.clicks),
+  const threeHaLinks = useMemo(
+    () =>
+      (affiliateLinks?.links ?? [])
+        .filter((l) => l.source === "3ha")
+        .slice()
+        .sort((a, b) => b.clicks - a.clicks),
+    [affiliateLinks]
+  );
+  const brandconnectLinks = useMemo(
+    () =>
+      (affiliateLinks?.links ?? [])
+        .filter((l) => l.source === "brandconnect")
+        .slice()
+        .sort((a, b) => b.clicks - a.clicks),
     [affiliateLinks]
   );
 
@@ -686,6 +894,16 @@ export default function ContentPipelinePage() {
           className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
           style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
         >
+          <button
+            onClick={refreshSuggestions}
+            disabled={suggestBusy}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 disabled:opacity-50"
+            style={{ backgroundColor: "var(--surface)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+            title="Signal Bus(조회수·클릭 등)를 다시 읽어 actionNeeded 제안을 재계산"
+          >
+            {suggestBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
+            제안 새로고침
+          </button>
           <button
             onClick={toggleAutomation}
             disabled={automationBusy || automation === null}
@@ -786,71 +1004,22 @@ export default function ContentPipelinePage() {
             )}
           </button>
           {linksExpanded && (
-            <div className="px-4 pb-4 flex flex-col gap-1.5">
-              {sortedAffiliateLinks.map((link) => (
-                <div
-                  key={link.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 rounded-lg text-sm"
-                  style={{ backgroundColor: "var(--surface)" }}
-                >
-                  <span
-                    className="text-[11px] px-1.5 py-0.5 rounded flex-shrink-0"
-                    style={{ backgroundColor: "var(--card)", color: "var(--text-muted)" }}
-                  >
-                    {link.program}
-                  </span>
-                  <span className="flex-1 min-w-[100px] truncate" style={{ color: "var(--text-primary)" }}>
-                    {link.label}
-                  </span>
-                  <div className="flex items-center gap-3 text-[11px] font-mono flex-shrink-0">
-                    <span title="클릭 수">
-                      <span style={{ color: LABEL_DIM }}>클릭 </span>
-                      <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
-                        {link.clicks}
-                      </span>
-                    </span>
-                    <span title="판매전환율">
-                      <span style={{ color: LABEL_DIM }}>전환 </span>
-                      <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
-                        {link.conversionRate != null ? `${(link.conversionRate * 100).toFixed(1)}%` : "—"}
-                      </span>
-                    </span>
-                    <span title="최근 클릭일">
-                      <span style={{ color: LABEL_DIM }}>최근 </span>
-                      <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
-                        {link.lastClickedAt
-                          ? new Date(link.lastClickedAt).toLocaleDateString("ko-KR", {
-                              month: "numeric",
-                              day: "numeric",
-                            })
-                          : "—"}
-                      </span>
-                    </span>
-                  </div>
-                  <span className="font-mono text-xs flex-shrink-0" style={{ color: "var(--text-secondary)" }}>
-                    {link.url}
-                  </span>
-                  <button
-                    onClick={() => copyLink(link)}
-                    className="text-xs font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 flex-shrink-0"
-                    style={{
-                      backgroundColor: copiedLinkId === link.id ? "var(--success)" : "var(--card)",
-                      color: copiedLinkId === link.id ? "#fff" : "var(--text-secondary)",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    {copiedLinkId === link.id ? (
-                      <>
-                        <Check className="w-3 h-3" /> 복사됨
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" /> 복사
-                      </>
-                    )}
-                  </button>
-                </div>
-              ))}
+            <div className="px-4 pb-4 flex flex-col gap-4">
+              <AffiliateLinkGroup
+                title="세시간전"
+                links={threeHaLinks}
+                updatedAt={affiliateLinks.sources.threeHa.updatedAt}
+                copiedLinkId={copiedLinkId}
+                onCopy={copyLink}
+              />
+              <div style={{ borderTop: "1px solid var(--border)" }} />
+              <AffiliateLinkGroup
+                title="네이버 브랜드커넥트"
+                links={brandconnectLinks}
+                updatedAt={affiliateLinks.sources.brandconnect.updatedAt}
+                copiedLinkId={copiedLinkId}
+                onCopy={copyLink}
+              />
             </div>
           )}
         </div>
@@ -943,6 +1112,45 @@ export default function ContentPipelinePage() {
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
+                            </div>
+                          )}
+
+                          {!idea.actionNeeded && idea.suggestedActionNeeded && (
+                            <div
+                              className="flex items-center justify-between gap-2 mb-2 px-2 py-1.5 rounded-lg text-xs"
+                              style={{
+                                backgroundColor: "var(--surface)",
+                                color: ACTION_NEEDED_META[idea.suggestedActionNeeded.type].color,
+                                border: `1px dashed ${ACTION_NEEDED_META[idea.suggestedActionNeeded.type].color}`,
+                              }}
+                              title={`${idea.suggestedActionNeeded.reason}\n근거: ${idea.suggestedActionNeeded.basedOn.join(", ")}`}
+                            >
+                              <span className="font-medium truncate">
+                                제안 — {ACTION_NEEDED_META[idea.suggestedActionNeeded.type].label} —{" "}
+                                {idea.suggestedActionNeeded.reason}
+                              </span>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    applySuggestion(idea.id);
+                                  }}
+                                  className="opacity-70 hover:opacity-100"
+                                  title="적용 — actionNeeded로 확정"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    dismissSuggestion(idea.id);
+                                  }}
+                                  className="opacity-70 hover:opacity-100"
+                                  title="무시 — 이 제안 지우기"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                           )}
 
@@ -1072,23 +1280,92 @@ export default function ContentPipelinePage() {
                               </div>
                             )}
                             {idea.status === "published" && idea.publishedUrl && (
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <a
-                                  href={idea.publishedUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-xs inline-flex items-center gap-1 font-medium"
-                                  style={{ color: "var(--success)" }}
-                                >
-                                  <ExternalLink className="w-3 h-3" /> 발행글 보기 ({idea.publishedAt})
-                                </a>
-                                {idea.affiliateProgram && (
-                                  <span
-                                    className="text-[11px] px-2 py-0.5 rounded-md"
-                                    style={{ backgroundColor: "var(--surface)", color: LABEL_DIM }}
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <a
+                                    href={idea.publishedUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs inline-flex items-center gap-1 font-medium"
+                                    style={{ color: "var(--success)" }}
                                   >
-                                    {idea.affiliateProgram}
-                                  </span>
+                                    <ExternalLink className="w-3 h-3" /> 발행글 보기 ({idea.publishedAt})
+                                  </a>
+                                  {idea.affiliateProgram && (
+                                    <span
+                                      className="text-[11px] px-2 py-0.5 rounded-md"
+                                      style={{ backgroundColor: "var(--surface)", color: LABEL_DIM }}
+                                    >
+                                      {idea.affiliateProgram}
+                                    </span>
+                                  )}
+                                  {idea.affiliateLink && (
+                                    <a
+                                      href={idea.affiliateLink}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[11px] inline-flex items-center gap-1"
+                                      style={{ color: "var(--info)" }}
+                                    >
+                                      <Link2 className="w-3 h-3" /> {idea.affiliateLink}
+                                    </a>
+                                  )}
+                                  {editingAffiliateId !== idea.id && (
+                                    <button
+                                      onClick={() => openAffiliateEditor(idea)}
+                                      className="text-[11px] inline-flex items-center gap-1"
+                                      style={{ color: "var(--text-muted)" }}
+                                    >
+                                      <PenLine className="w-3 h-3" />
+                                      {idea.affiliateProgram || idea.affiliateLink ? "제휴정보 수정" : "제휴링크 추가"}
+                                    </button>
+                                  )}
+                                </div>
+                                {editingAffiliateId === idea.id && (
+                                  <div
+                                    className="flex flex-col gap-1.5 p-2 rounded-lg"
+                                    style={{ backgroundColor: "var(--surface)", border: "1px solid var(--border)" }}
+                                  >
+                                    <input
+                                      value={affiliateProgramInput}
+                                      onChange={(e) => setAffiliateProgramInput(e.target.value)}
+                                      placeholder="제휴 프로그램 (예: 세시간전)"
+                                      className="text-xs px-2 py-1 rounded-md"
+                                      style={{
+                                        backgroundColor: "var(--background)",
+                                        border: "1px solid var(--border)",
+                                        color: "var(--text-primary)",
+                                      }}
+                                    />
+                                    <input
+                                      value={affiliateLinkInput}
+                                      onChange={(e) => setAffiliateLinkInput(e.target.value)}
+                                      placeholder="발행글에 실제 삽입한 제휴링크 URL"
+                                      className="text-xs px-2 py-1 rounded-md"
+                                      style={{
+                                        backgroundColor: "var(--background)",
+                                        border: "1px solid var(--border)",
+                                        color: "var(--text-primary)",
+                                      }}
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => saveAffiliateInfo(idea.id)}
+                                        disabled={affiliateSaving}
+                                        className="text-[11px] font-medium px-2 py-1 rounded-md"
+                                        style={{ backgroundColor: "var(--success)", color: "white" }}
+                                      >
+                                        {affiliateSaving ? "저장 중..." : "저장"}
+                                      </button>
+                                      <button
+                                        onClick={() => setEditingAffiliateId(null)}
+                                        className="text-[11px]"
+                                        style={{ color: "var(--text-muted)" }}
+                                      >
+                                        취소
+                                      </button>
+                                    </div>
+                                  </div>
                                 )}
                               </div>
                             )}
