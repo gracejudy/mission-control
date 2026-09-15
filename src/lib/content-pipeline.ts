@@ -687,8 +687,10 @@ export interface FetchedNaverPost {
   text: string;
   /** 2026-09-15: 본문(se-main-container) 안의 실제 href — 텍스트 추출은 태그를 지워 링크 카드 URL을 잃어서 따로 뽑는다. RSS 등 블로그 공통 링크는 제외. */
   links: string[];
-  /** 본문 안 이미지 개수(se-image-resource). */
+  /** 본문 안 이미지 개수. */
   imageCount: number;
+  /** 2026-09-16: 본문 이미지의 업로드 원본 파일명(순서대로). 네이버 이미지 URL 끝에 원본 파일명이 남아서, 텍스트로는 안 보이는 이미지(예: 공정위 문구 배너)를 파일명으로 알아볼 수 있다. */
+  imageNames: string[];
 }
 
 const NAVER_UA =
@@ -746,6 +748,27 @@ function extractBodyLinks(body: string): string[] {
   return [...new Set(links)];
 }
 
+/** 이미지 컴포넌트의 data-linkdata JSON에서 src를 읽어 원본 파일명만 뽑는다(지도·스티커 등 src 없는 컴포넌트는 제외). */
+function extractImageNames(body: string): string[] {
+  const names: string[] = [];
+  for (const m of body.matchAll(/data-linkdata='(\{[^']*\})'/g)) {
+    let data: { src?: unknown };
+    try {
+      data = JSON.parse(decodeHtmlEntities(m[1]));
+    } catch {
+      continue;
+    }
+    if (typeof data.src !== 'string' || !data.src) continue;
+    const file = data.src.split('?')[0].split('/').pop() ?? '';
+    try {
+      names.push(decodeURIComponent(file));
+    } catch {
+      names.push(file);
+    }
+  }
+  return names;
+}
+
 /** 블록 경계(문단·줄바꿈·div·목록 등)에서만 줄을 나눈다. 2026-09-15: 예전엔 모든 태그를 줄바꿈으로 바꿔서, 한 문단 안에서 글자색만 바뀌어도("갑뿐 아" + <b>"고다 호텔"</b>) 단어가 줄로 쪼개졌고 개선 제안이 이를 "깨진 문장"으로 오판했다. */
 const BLOCK_TAG_RE = /<\/?(?:p|div|br|li|ul|ol|h[1-6]|tr|table|blockquote)\b[^>]*>/gi;
 
@@ -790,8 +813,8 @@ export async function fetchNaverPost(url: string): Promise<FetchedNaverPost> {
   }
 
   const links = extractBodyLinks(rawBody);
-  const imageCount = (rawBody.match(/se-image-resource/g) ?? []).length;
-  return { title, text, links, imageCount };
+  const imageNames = extractImageNames(rawBody);
+  return { title, text, links, imageCount: imageNames.length, imageNames };
 }
 
 /** True if a process with this PID is currently running (best-effort — does not confirm it's actually our watcher). */

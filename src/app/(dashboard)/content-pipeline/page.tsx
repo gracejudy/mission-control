@@ -331,6 +331,36 @@ const LINK_FIT_META: Record<"fit" | "weak" | "unfit", { label: string; color: st
 
 const PRIORITY_LABELS: Record<ImprovementItem["priority"], string> = { high: "높음", medium: "중간", low: "낮음" };
 
+/** 제안 항목 안의 작은 버튼(적용함/무시/되돌리기) — 텍스트 링크처럼 안 보이게 테두리·배경을 준다 */
+function MiniButton({
+  onClick,
+  color,
+  filled = false,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  color: string;
+  filled?: boolean;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="text-[11px] font-semibold px-2 py-1 rounded-md inline-flex items-center gap-1 transition-opacity hover:opacity-80"
+      style={{
+        color: filled ? "#fff" : color,
+        backgroundColor: filled ? color : `color-mix(in srgb, ${color} 10%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${color} ${filled ? 100 : 45}%, transparent)`,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 /** 발행 카드 안의 개선 제안 영역 — 요청 버튼 / 대기 표시 / 결과(항목별 적용·무시) */
 function ImprovementPanel({
   run,
@@ -352,15 +382,11 @@ function ImprovementPanel({
   onDecide: (itemId: string, decision: "applied" | "dismissed" | null) => void;
 }) {
   const requestButton = (label: string) => (
-    <button
-      onClick={onRequest}
-      disabled={busy}
-      className="text-[11px] inline-flex items-center gap-1 disabled:opacity-50"
-      style={{ color: "var(--accent)" }}
-    >
-      <Sparkles className="w-3 h-3" />
-      {busy ? "글 읽는 중..." : label}
-    </button>
+    <div>
+      <PrimaryButton onClick={onRequest} disabled={busy} color="var(--accent)" icon={Sparkles} variant="outline">
+        {busy ? "글 읽는 중..." : label}
+      </PrimaryButton>
+    </div>
   );
 
   if (!run) {
@@ -437,40 +463,39 @@ function ImprovementPanel({
                   border: decision?.decision === "applied" ? "1px solid var(--success)" : "1px solid transparent",
                 }}
               >
-                <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                   <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
                     {IMPROVEMENT_CATEGORY_LABELS[item.category] ?? item.category}
                     <span className="ml-1.5 font-normal" style={{ color: LABEL_DIM }}>
                       우선순위 {PRIORITY_LABELS[item.priority] ?? item.priority}
                     </span>
                   </span>
-                  <span className="flex items-center gap-2 flex-shrink-0">
+                  <span className="flex items-center gap-1.5 flex-shrink-0">
                     {decision ? (
-                      <button
-                        onClick={() => onDecide(item.id, null)}
-                        style={{ color: decision.decision === "applied" ? "var(--success)" : LABEL_DIM }}
-                        title="표시 되돌리기"
-                      >
-                        {decision.decision === "applied" ? "✓ 적용함" : "무시함"} ({decision.decidedAt.slice(5, 10)}) ↺
-                      </button>
+                      <>
+                        <span
+                          className="font-semibold"
+                          style={{ color: decision.decision === "applied" ? "var(--success)" : LABEL_DIM }}
+                        >
+                          {decision.decision === "applied" ? "✓ 적용함" : "무시함"} ({decision.decidedAt.slice(5, 10)})
+                        </span>
+                        <MiniButton onClick={() => onDecide(item.id, null)} color={LABEL_DIM} title="표시 되돌리기">
+                          <RotateCw className="w-3 h-3" /> 되돌리기
+                        </MiniButton>
+                      </>
                     ) : (
                       <>
-                        <button
+                        <MiniButton
                           onClick={() => onDecide(item.id, "applied")}
-                          className="inline-flex items-center gap-0.5"
-                          style={{ color: "var(--success)" }}
+                          color="var(--success)"
+                          filled
                           title="발행글에 반영함 — 적용일이 전후 비교 기준이 됩니다"
                         >
                           <Check className="w-3 h-3" /> 적용함
-                        </button>
-                        <button
-                          onClick={() => onDecide(item.id, "dismissed")}
-                          className="inline-flex items-center gap-0.5"
-                          style={{ color: LABEL_DIM }}
-                          title="반영하지 않음"
-                        >
+                        </MiniButton>
+                        <MiniButton onClick={() => onDecide(item.id, "dismissed")} color={LABEL_DIM} title="반영하지 않음">
                           <X className="w-3 h-3" /> 무시
-                        </button>
+                        </MiniButton>
                       </>
                     )}
                   </span>

@@ -98,6 +98,10 @@ export interface ImprovementSnapshot {
   daysSincePublish: number | null;
   textLength: number;
   imageCount: number;
+  /** 2026-09-16: 본문 이미지 원본 파일명(순서대로). 스냅샷 이전 요청(09-15)엔 없다. */
+  imageNames?: string[];
+  /** 공정위(광고·제휴) 고지 감지 결과 — 텍스트 줄 또는 파일명이 고지 이미지로 보이는 이미지. 둘 다 null이면 "못 찾음"이지 "없음" 확정은 아니다. */
+  disclosure?: { text: string | null; image: string | null };
   links: PostLinkSnapshot[];
   /** 조회수 순위 파일이 들어온 주(observedAt)마다의 이 글 조회수. 순위표에 없던 주는 null(사실상 0~1회). */
   weeklyViews: { observedAt: string; value: number | null }[];
@@ -330,6 +334,21 @@ async function readThreeHaProgramsDigest(): Promise<string | null> {
   return rows.length ? rows.join('\n') : null;
 }
 
+/**
+ * 공정위 고지 감지. 2026-09-16 실측: B1·B8은 본문 첫머리 "[공지] 이 포스팅은 … 제휴/수수료" 텍스트,
+ * A2·I4는 이미지("2.크리에이터_공정위문구_로고.png", "세시간전_크리에이터_권장_문구_배너.png").
+ * 텍스트만 넘기던 09-15 버전은 이미지 고지를 못 봐서 A2에 "공정위 문구 없음"을 제안했다.
+ */
+const DISCLOSURE_TEXT_RE = /^.*(?:\[공지\]|이 포스팅은).*(?:제휴|수수료|광고|협찬|커넥트).*$/m;
+const DISCLOSURE_IMAGE_RE = /공정위|크리에이터|권장.?문구|광고|협찬|제휴|공지/;
+
+function detectDisclosure(text: string, imageNames: string[]): { text: string | null; image: string | null } {
+  return {
+    text: text.match(DISCLOSURE_TEXT_RE)?.[0].trim() ?? null,
+    image: imageNames.find((name) => DISCLOSURE_IMAGE_RE.test(name)) ?? null,
+  };
+}
+
 function daysBetween(fromDate: string, to: Date): number {
   return Math.floor((to.getTime() - new Date(fromDate).getTime()) / (1000 * 60 * 60 * 24));
 }
@@ -429,7 +448,7 @@ ${args.otherPosts || '- (없음)'}
 - **조회수가 작다(글당 주 0~23회).** 클릭률 수치로 결론 내리지 말고, 데이터가 부족하면 부족하다고 쓴다. 발행 당일에만 클릭이 몰린 링크(최근클릭일=발행일)는 자기 클릭/테스트일 수 있어 근거로 약하다.
 - 제휴가 주제와 안 맞으면 linkFit을 "unfit"으로 두고 링크를 억지로 넣는 제안을 하지 않는다. 대신 보완점·트래픽·댓글 제안을 한다.
 - 링크 제안(link_add)은 위 "이미 가진 제휴링크" 중 맞는 상품이 있어도 **클릭 이력이 있거나 다른 발행글에 쓰이는 링크는 돌려 쓰지 말고, 같은 상품으로 이 글 전용 링크를 새로 발급**하라고 제안한다(needsNewLink=true, url에는 참고용 기존 링크) — 링크를 여러 글에 돌려 쓰면 글별 클릭을 구분할 수 없다. 클릭 0회이고 어디에도 안 쓰인 링크만 그대로 써도 된다. 가진 링크가 없으면 파트너 목록에서 고르고 needsNewLink=true, productHint에 어떤 상품/페이지로 발급할지 쓴다.
-- 새로 제휴링크를 넣는 제안이면 공정위 문구가 본문에 있는지 확인하고, 없으면 그것도 항목으로 넣는다.
+- 공정위 고지는 스냅샷의 \`disclosure\`로 판단한다. text나 image 중 하나라도 값이 있으면 **고지가 있는 것**이다 — 이미지로 넣은 고지는 본문 텍스트에 안 나오므로 텍스트에 [공지]가 없다는 이유로 "없다"고 하지 않는다. 둘 다 null인데 제휴링크가 있거나 새로 넣자고 제안할 때만 고지 항목을 넣고, 파일명으로 못 알아본 이미지일 수 있으니 "[직접 확인 필요]"를 붙인다. \`imageNames\`는 본문 이미지 원본 파일명이다.
 - 제안은 **본문을 근거로 구체적으로**: 어느 문장/섹션 뒤에 무엇을 넣을지 본문을 짧게 인용해서 위치를 지정하고, 넣을 문구 예시를 준다.
 - 라이브 본문은 HTML에서 뽑은 텍스트라 이미지·링크 카드·글자 서식은 보이지 않는다. 텍스트만 보고 "깨졌다/없다"고 단정할 수 있는 건 텍스트에 그대로 드러난 것뿐이다(예: 초안의 \`[링크]\` 같은 플레이스홀더가 그대로 노출). 이미지 안에 있을 수 있는 내용(공정위 문구·가격 등)이 텍스트에 없으면 "[직접 확인 필요]"를 붙인다.
 - **글쓴이의 경험을 지어내지 않는다.** 본문에 없는 경험을 사실처럼 쓰는 문구를 제안하지 말고, 경험이 필요하면 "[직접 확인 필요]"라고 표시한다.
@@ -511,6 +530,8 @@ async function queueImprovementRequestUnlocked(ideaId: string): Promise<Improvem
     daysSincePublish: entry.publishedAt ? daysBetween(entry.publishedAt, now) : null,
     textLength: post.text.length,
     imageCount: post.imageCount,
+    imageNames: post.imageNames,
+    disclosure: detectDisclosure(post.text, post.imageNames),
     links: await classifyLinks(post.links, ideaId, status, affiliateLinks.links),
     weeklyViews: weeklyViewsFor(ideaId, entry.publishedAt, signals),
   };
