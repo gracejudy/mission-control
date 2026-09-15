@@ -685,6 +685,10 @@ export async function readStrategy(): Promise<StrategyMap> {
 export interface FetchedNaverPost {
   title: string;
   text: string;
+  /** 2026-09-15: 본문(se-main-container) 안의 실제 href — 텍스트 추출은 태그를 지워 링크 카드 URL을 잃어서 따로 뽑는다. RSS 등 블로그 공통 링크는 제외. */
+  links: string[];
+  /** 본문 안 이미지 개수(se-image-resource). */
+  imageCount: number;
 }
 
 const NAVER_UA =
@@ -699,8 +703,8 @@ export function parseNaverPostUrl(url: string): { blogId: string; logNo: string 
   throw new Error(`네이버 블로그 URL에서 blogId/logNo를 못 찾았습니다: ${url}`);
 }
 
-/** Extracts the se-main-container div (Smart Editor ONE post body) via tag-depth matching. */
-function extractMainContainer(html: string): string | null {
+/** Slices the raw inner HTML of the se-main-container div (Smart Editor ONE post body) via tag-depth matching. */
+function sliceMainContainer(html: string): string | null {
   const startMatch = html.match(/<div class="se-main-container">/);
   if (!startMatch || startMatch.index === undefined) return null;
   const start = startMatch.index + startMatch[0].length;
@@ -717,11 +721,39 @@ function extractMainContainer(html: string): string | null {
       break;
     }
   }
+  return html.slice(start, end);
+}
 
-  let body = html.slice(start, end);
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+/** 본문 HTML 안의 href + 링크 카드(data-linkdata)의 link 값. 순서 유지, 중복 제거. */
+function extractBodyLinks(body: string): string[] {
+  const found: string[] = [];
+  for (const m of body.matchAll(/href="([^"]+)"/g)) found.push(m[1]);
+  for (const m of body.matchAll(/&quot;link&quot;\s*:\s*&quot;(.*?)&quot;|"link"\s*:\s*"([^"]+)"/g)) {
+    found.push(m[1] ?? m[2]);
+  }
+  const links = found
+    .map((l) => decodeHtmlEntities(l).trim())
+    .filter((l) => /^https?:\/\//.test(l) && !l.includes('rss.blog.naver.com'));
+  return [...new Set(links)];
+}
+
+/** 블록 경계(문단·줄바꿈·div·목록 등)에서만 줄을 나눈다. 2026-09-15: 예전엔 모든 태그를 줄바꿈으로 바꿔서, 한 문단 안에서 글자색만 바뀌어도("갑뿐 아" + <b>"고다 호텔"</b>) 단어가 줄로 쪼개졌고 개선 제안이 이를 "깨진 문장"으로 오판했다. */
+const BLOCK_TAG_RE = /<\/?(?:p|div|br|li|ul|ol|h[1-6]|tr|table|blockquote)\b[^>]*>/gi;
+
+function mainContainerToText(rawBody: string): string {
+  let body = rawBody;
   body = body.replace(/<script[\s\S]*?<\/script>/g, '');
   body = body.replace(/<style[\s\S]*?<\/style>/g, '');
-  let text = body.replace(/<[^>]+>/g, '\n');
+  let text = body.replace(BLOCK_TAG_RE, '\n').replace(/<[^>]+>/g, '');
   text = text.replace(/[ \t]+/g, ' ');
   text = text.replace(/\n\s*\n+/g, '\n').trim();
   return text;
@@ -749,14 +781,17 @@ export async function fetchNaverPost(url: string): Promise<FetchedNaverPost> {
     throw new Error('제목 추출 실패 — 페이지 구조가 예상과 다릅니다. URL을 확인해주세요.');
   }
 
-  const text = extractMainContainer(html);
-  if (!text || text.length < 50) {
+  const rawBody = sliceMainContainer(html);
+  const text = rawBody === null ? null : mainContainerToText(rawBody);
+  if (!rawBody || !text || text.length < 50) {
     throw new Error(
       `본문 추출 실패 (구버전 에디터 글일 수 있음) — 직접 확인: https://blog.naver.com/${blogId}/${logNo}`
     );
   }
 
-  return { title, text };
+  const links = extractBodyLinks(rawBody);
+  const imageCount = (rawBody.match(/se-image-resource/g) ?? []).length;
+  return { title, text, links, imageCount };
 }
 
 /** True if a process with this PID is currently running (best-effort — does not confirm it's actually our watcher). */

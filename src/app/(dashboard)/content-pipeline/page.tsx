@@ -276,6 +276,248 @@ function PrimaryButton({
   );
 }
 
+type ImprovementCategory =
+  | "link_add"
+  | "link_placement"
+  | "cta"
+  | "content_gap"
+  | "title"
+  | "keyword"
+  | "internal_link"
+  | "engagement";
+
+interface ImprovementItem {
+  id: string;
+  category: ImprovementCategory;
+  priority: "high" | "medium" | "low";
+  suggestion: string;
+  rationale: string;
+  link?: { url?: string; program?: string; needsNewLink?: boolean; productHint?: string };
+}
+
+interface ImprovementRun {
+  state: "requested" | "failed" | "done";
+  error?: string;
+  meta: {
+    requestTs: string;
+    requestedAt: string;
+    snapshot: { weeklyViews: { observedAt: string; value: number | null }[] };
+    decisions: Record<string, { decision: "applied" | "dismissed"; decidedAt: string }>;
+  };
+  result: {
+    generatedAt: string;
+    linkFit: { verdict: "fit" | "weak" | "unfit"; reason: string };
+    items: ImprovementItem[];
+    dataCaveats?: string[];
+  } | null;
+}
+
+const IMPROVEMENT_CATEGORY_LABELS: Record<ImprovementCategory, string> = {
+  link_add: "🔗 링크 추가",
+  link_placement: "📍 링크 위치",
+  cta: "👆 클릭 유도 문구",
+  content_gap: "🧩 보완",
+  title: "✏️ 제목",
+  keyword: "🔎 키워드",
+  internal_link: "↔️ 내부링크",
+  engagement: "💬 댓글·공감",
+};
+
+const LINK_FIT_META: Record<"fit" | "weak" | "unfit", { label: string; color: string }> = {
+  fit: { label: "제휴 적합", color: "var(--success)" },
+  weak: { label: "제휴 약함", color: "var(--warning)" },
+  unfit: { label: "제휴 부적합", color: "var(--text-muted)" },
+};
+
+const PRIORITY_LABELS: Record<ImprovementItem["priority"], string> = { high: "높음", medium: "중간", low: "낮음" };
+
+/** 발행 카드 안의 개선 제안 영역 — 요청 버튼 / 대기 표시 / 결과(항목별 적용·무시) */
+function ImprovementPanel({
+  run,
+  busy,
+  expanded,
+  error,
+  automationAlive,
+  onRequest,
+  onToggle,
+  onDecide,
+}: {
+  run: ImprovementRun | undefined;
+  busy: boolean;
+  expanded: boolean;
+  error: string | undefined;
+  automationAlive: boolean;
+  onRequest: () => void;
+  onToggle: () => void;
+  onDecide: (itemId: string, decision: "applied" | "dismissed" | null) => void;
+}) {
+  const requestButton = (label: string) => (
+    <button
+      onClick={onRequest}
+      disabled={busy}
+      className="text-[11px] inline-flex items-center gap-1 disabled:opacity-50"
+      style={{ color: "var(--accent)" }}
+    >
+      <Sparkles className="w-3 h-3" />
+      {busy ? "글 읽는 중..." : label}
+    </button>
+  );
+
+  if (!run) {
+    return (
+      <div className="flex flex-col gap-1">
+        {requestButton("개선 제안 요청")}
+        {error && <span className="text-[11px]" style={{ color: "var(--error)" }}>{error}</span>}
+      </div>
+    );
+  }
+
+  if (run.state === "requested") {
+    return (
+      <div className="flex flex-col gap-0.5 text-[11px]">
+        <span className="inline-flex items-center gap-1" style={{ color: "var(--warning)" }}>
+          <Hourglass className="w-3 h-3" /> 개선 제안 작성 대기중 ({run.meta.requestedAt.slice(5, 16).replace("T", " ")} 요청)
+        </span>
+        {!automationAlive && (
+          <span style={{ color: LABEL_DIM }}>자동처리가 꺼져 있어 아직 처리되지 않습니다 — 09~16시에 자동처리를 켜면 처리됩니다</span>
+        )}
+      </div>
+    );
+  }
+
+  if (run.state === "failed" || !run.result) {
+    return (
+      <div className="flex flex-col gap-1 text-[11px]">
+        <span style={{ color: "var(--error)" }}>개선 제안 실패 — {run.error ?? "결과 없음"}</span>
+        {requestButton("다시 요청")}
+      </div>
+    );
+  }
+
+  const { result, meta } = run;
+  const fit = LINK_FIT_META[result.linkFit.verdict];
+  const decidedCount = Object.keys(meta.decisions).length;
+
+  return (
+    <div className="rounded-lg text-[11px]" style={{ backgroundColor: "var(--surface)" }}>
+      <button onClick={onToggle} className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left">
+        <span className="inline-flex items-center gap-1.5 flex-wrap">
+          <Sparkles className="w-3 h-3" style={{ color: "var(--accent)" }} />
+          <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+            개선 제안 {result.items.length}건
+          </span>
+          <span
+            className="px-1.5 py-[1px] rounded-full font-semibold"
+            style={{ color: fit.color, backgroundColor: `color-mix(in srgb, ${fit.color} 12%, transparent)` }}
+          >
+            {fit.label}
+          </span>
+          <span style={{ color: LABEL_DIM }}>
+            {meta.requestTs.slice(5, 10)} · 처리 {decidedCount}/{result.items.length}
+          </span>
+        </span>
+        {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+
+      {expanded && (
+        <div className="px-2.5 pb-2.5 space-y-2 leading-relaxed" style={{ borderTop: `1px solid ${CARD_DIVIDER}` }}>
+          <p className="pt-2" style={{ color: "var(--text-secondary)" }}>
+            {result.linkFit.reason}
+          </p>
+
+          {result.items.map((item) => {
+            const decision = meta.decisions[item.id];
+            return (
+              <div
+                key={item.id}
+                className="p-2 rounded-md"
+                style={{
+                  backgroundColor: "var(--background)",
+                  opacity: decision?.decision === "dismissed" ? 0.5 : 1,
+                  border: decision?.decision === "applied" ? "1px solid var(--success)" : "1px solid transparent",
+                }}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+                    {IMPROVEMENT_CATEGORY_LABELS[item.category] ?? item.category}
+                    <span className="ml-1.5 font-normal" style={{ color: LABEL_DIM }}>
+                      우선순위 {PRIORITY_LABELS[item.priority] ?? item.priority}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-2 flex-shrink-0">
+                    {decision ? (
+                      <button
+                        onClick={() => onDecide(item.id, null)}
+                        style={{ color: decision.decision === "applied" ? "var(--success)" : LABEL_DIM }}
+                        title="표시 되돌리기"
+                      >
+                        {decision.decision === "applied" ? "✓ 적용함" : "무시함"} ({decision.decidedAt.slice(5, 10)}) ↺
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => onDecide(item.id, "applied")}
+                          className="inline-flex items-center gap-0.5"
+                          style={{ color: "var(--success)" }}
+                          title="발행글에 반영함 — 적용일이 전후 비교 기준이 됩니다"
+                        >
+                          <Check className="w-3 h-3" /> 적용함
+                        </button>
+                        <button
+                          onClick={() => onDecide(item.id, "dismissed")}
+                          className="inline-flex items-center gap-0.5"
+                          style={{ color: LABEL_DIM }}
+                          title="반영하지 않음"
+                        >
+                          <X className="w-3 h-3" /> 무시
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </div>
+                <p className="whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>
+                  {item.suggestion}
+                </p>
+                {item.link && (
+                  <p className="mt-1" style={{ color: "var(--info)" }}>
+                    {item.link.program && `${item.link.program} · `}
+                    {item.link.needsNewLink ? `새 링크 발급 필요${item.link.productHint ? ` — ${item.link.productHint}` : ""}` : "기존 링크 사용"}
+                    {item.link.url && (
+                      <a href={item.link.url} target="_blank" rel="noreferrer" className="ml-1 underline">
+                        {item.link.url}
+                      </a>
+                    )}
+                  </p>
+                )}
+                <p className="mt-1" style={{ color: LABEL_DIM }}>
+                  근거: {item.rationale}
+                </p>
+              </div>
+            );
+          })}
+
+          {result.dataCaveats && result.dataCaveats.length > 0 && (
+            <div style={{ color: LABEL_DIM }}>
+              <div className="font-medium">데이터 한계</div>
+              <ul className="list-disc pl-4">
+                {result.dataCaveats.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            {requestButton("다시 요청")}
+            <span style={{ color: LABEL_DIM }}>지금 글·데이터로 새로 제안받기(이전 제안과 결정 기록은 남음)</span>
+          </div>
+          {error && <span style={{ color: "var(--error)" }}>{error}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** "내 제휴링크" 패널 안에서 세시간전 / 네이버 브랜드커넥트를 시각적으로 분리된 두 그룹으로 렌더링 */
 function AffiliateLinkGroup({
   title,
@@ -433,6 +675,64 @@ export default function ContentPipelinePage() {
   const [addError, setAddError] = useState<string | null>(null);
   const [lookupBusy, setLookupBusy] = useState(false);
   const [lookupNote, setLookupNote] = useState<string | null>(null);
+
+  const [improvements, setImprovements] = useState<Record<string, ImprovementRun>>({});
+  const [improvementBusyId, setImprovementBusyId] = useState<string | null>(null);
+  const [expandedImprovementId, setExpandedImprovementId] = useState<string | null>(null);
+  const [improvementErrors, setImprovementErrors] = useState<Record<string, string>>({});
+
+  const fetchImprovements = useCallback(async () => {
+    try {
+      const res = await fetch("/api/content-pipeline/improvements");
+      if (res.ok) {
+        const data = await res.json();
+        setImprovements(data.runs ?? {});
+      }
+    } catch {
+      // 조회 실패는 조용히 무시 — 다음 폴링에서 재시도
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchImprovements();
+    const interval = setInterval(fetchImprovements, 30000);
+    return () => clearInterval(interval);
+  }, [fetchImprovements]);
+
+  const requestImprovement = async (id: string) => {
+    setImprovementBusyId(id);
+    setImprovementErrors((prev) => ({ ...prev, [id]: "" }));
+    try {
+      const res = await fetch(`/api/content-pipeline/improvements/${id}`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setImprovementErrors((prev) => ({ ...prev, [id]: data.error ?? "개선 제안 요청에 실패했습니다" }));
+      }
+      await fetchImprovements();
+    } catch {
+      setImprovementErrors((prev) => ({ ...prev, [id]: "개선 제안 요청에 실패했습니다" }));
+    } finally {
+      setImprovementBusyId(null);
+    }
+  };
+
+  const decideImprovement = async (
+    id: string,
+    requestTs: string,
+    itemId: string,
+    decision: "applied" | "dismissed" | null
+  ) => {
+    try {
+      const res = await fetch(`/api/content-pipeline/improvements/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestTs, itemId, decision }),
+      });
+      if (res.ok) await fetchImprovements();
+    } catch {
+      // 무시 — 사람이 버튼을 다시 누르면 됨
+    }
+  };
 
   const fetchIdeas = useCallback(async () => {
     try {
@@ -1367,6 +1667,21 @@ export default function ContentPipelinePage() {
                                     </div>
                                   </div>
                                 )}
+                                <ImprovementPanel
+                                  run={improvements[idea.id]}
+                                  busy={improvementBusyId === idea.id}
+                                  expanded={expandedImprovementId === idea.id}
+                                  error={improvementErrors[idea.id] || undefined}
+                                  automationAlive={!!automation?.alive}
+                                  onRequest={() => requestImprovement(idea.id)}
+                                  onToggle={() =>
+                                    setExpandedImprovementId((cur) => (cur === idea.id ? null : idea.id))
+                                  }
+                                  onDecide={(itemId, decision) => {
+                                    const run = improvements[idea.id];
+                                    if (run) decideImprovement(idea.id, run.meta.requestTs, itemId, decision);
+                                  }}
+                                />
                               </div>
                             )}
                           </div>
