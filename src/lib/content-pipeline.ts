@@ -691,6 +691,10 @@ export interface FetchedNaverPost {
   imageCount: number;
   /** 2026-09-16: 본문 이미지의 업로드 원본 파일명(순서대로). 네이버 이미지 URL 끝에 원본 파일명이 남아서, 텍스트로는 안 보이는 이미지(예: 공정위 문구 배너)를 파일명으로 알아볼 수 있다. */
   imageNames: string[];
+  /** 2026-10-05: 글에 붙인 태그(발행글 등록 시 키워드 후보). 본문 HTML엔 없고 BlogTagListInfo API로 따로 받는다 — 실패해도 빈 배열(태그는 부가 정보). */
+  tags: string[];
+  /** 2026-10-05: 실제 발행일(YYYY-MM-DD, se_publishDate). "N시간 전" 같은 상대 표기거나 못 찾으면 undefined. */
+  publishedAt?: string;
 }
 
 const NAVER_UA =
@@ -814,7 +818,92 @@ export async function fetchNaverPost(url: string): Promise<FetchedNaverPost> {
 
   const links = extractBodyLinks(rawBody);
   const imageNames = extractImageNames(rawBody);
-  return { title, text, links, imageCount: imageNames.length, imageNames };
+  const tags = await fetchNaverPostTags(blogId, logNo);
+  const publishedAt = extractPublishDate(html);
+  return { title, text, links, imageCount: imageNames.length, imageNames, tags, publishedAt };
+}
+
+/** se_publishDate("2026. 8. 24. 13:34") → "2026-08-24". 오늘 발행글은 "3시간 전"처럼 상대 표기라 undefined. */
+function extractPublishDate(html: string): string | undefined {
+  const m = html.match(/se_publishDate[^>]*>\s*(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\./);
+  if (!m) return undefined;
+  return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+}
+
+/** 글 태그 목록. PostView HTML의 태그 영역은 JS로 채워져서 비어 있고, 실제 값은 BlogTagListInfo API(2026-10-05 실측: 리퍼러·로그인 없이 200)에 쉼표로 이어진 URL 인코딩 문자열로 온다. */
+async function fetchNaverPostTags(blogId: string, logNo: string): Promise<string[]> {
+  try {
+    const url = `https://blog.naver.com/BlogTagListInfo.naver?blogId=${encodeURIComponent(blogId)}&logNoList=${logNo}&logType=mylog`;
+    const res = await fetch(url, { headers: { 'User-Agent': NAVER_UA } });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { taglist?: { logno?: string; tagName?: string }[] };
+    const entry = data.taglist?.find((t) => t.logno === logNo);
+    if (!entry?.tagName) return [];
+    return decodeURIComponent(entry.tagName)
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+  } catch (error) {
+    console.error('Failed to fetch naver post tags (non-fatal):', error);
+    return [];
+  }
+}
+
+/** 같은 네이버 글(blogId+logNo)이 이미 발행글로 기록된 소재 id. URL 표기(PostView/프레임셋)가 달라도 같은 글로 본다. */
+export function findIdeaByPublishedUrl(status: StatusMap, url: string): string | null {
+  const target = parseNaverPostUrl(url);
+  for (const [id, entry] of Object.entries(status)) {
+    if (!entry.publishedUrl) continue;
+    try {
+      const p = parseNaverPostUrl(entry.publishedUrl);
+      if (p.blogId === target.blogId && p.logNo === target.logNo) return id;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function todayKST(): string {
+  return new Date().toLocaleDateString('sv', { timeZone: 'Asia/Seoul' });
+}
+
+/**
+ * 발행된 글을 소재 `id`의 발행본으로 기록한다 — 본문을 drafts/{id}-published.txt로 저장하고
+ * status를 published로 바꾸고 Signal Bus에 published를 남긴다. publish API(초안→발행)와
+ * 발행글 등록(이미 올린 글→새 소재)이 같은 기록 형식을 쓰도록 한 곳에 둔다.
+ */
+export async function recordPublishedPost(
+  id: string,
+  url: string,
+  post: FetchedNaverPost,
+  opts: { publishedAt?: string; affiliateProgram?: string } = {}
+): Promise<StatusEntry> {
+  const publishedRelPath = path.join('drafts', `${id}-published.txt`);
+  const publishedPath = resolveInPipelineDir(publishedRelPath);
+  await fs.mkdir(DRAFTS_DIR, { recursive: true });
+  await fs.writeFile(publishedPath, post.text);
+
+  const publishedAt = opts.publishedAt ?? todayKST();
+  const entry = await updateStatus(id, {
+    status: 'published',
+    publishedTitle: post.title,
+    publishedFile: publishedRelPath,
+    publishedUrl: url,
+    publishedAt,
+    ...(opts.affiliateProgram ? { affiliateProgram: opts.affiliateProgram } : {}),
+  });
+
+  await emitSignal({
+    source: 'pipeline',
+    project: 'content-pipeline',
+    entityId: id,
+    metric: 'published',
+    value: url,
+    observedAt: publishedAt,
+  });
+
+  return entry;
 }
 
 /** True if a process with this PID is currently running (best-effort — does not confirm it's actually our watcher). */

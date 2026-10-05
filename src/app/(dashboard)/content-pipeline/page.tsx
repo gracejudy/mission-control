@@ -154,6 +154,14 @@ const FORM_FIELDS: Record<
 
 const COMPETITION_OPTIONS = ["낮음", "중간", "높음"];
 
+/** POST /api/content-pipeline/ideas/from-url 응답 — 발행글 등록 폼 자동 채움용. */
+interface FetchedPublishedPost {
+  url: string;
+  title: string;
+  tags: string[];
+  publishedAt: string | null;
+}
+
 const STATUS_META: Record<Idea["status"], { label: string; color: string }> = {
   idle: { label: "대기", color: "var(--text-muted)" },
   requested: { label: "요청됨", color: "var(--warning)" },
@@ -700,6 +708,12 @@ export default function ContentPipelinePage() {
   const [addError, setAddError] = useState<string | null>(null);
   const [lookupBusy, setLookupBusy] = useState(false);
   const [lookupNote, setLookupNote] = useState<string | null>(null);
+  // 2026-10-05: 발행글 등록 — 같은 소재 추가 모달을 "이미 올린 글 URL → 폼 자동 채움 → published로 등록" 모드로 연다.
+  const [addMode, setAddMode] = useState<"new" | "published">("new");
+  const [pubUrl, setPubUrl] = useState("");
+  const [pubFetched, setPubFetched] = useState<FetchedPublishedPost | null>(null);
+  const [pubFetchBusy, setPubFetchBusy] = useState(false);
+  const [pubFetchError, setPubFetchError] = useState<string | null>(null);
 
   const [improvements, setImprovements] = useState<Record<string, ImprovementRun>>({});
   const [improvementBusyId, setImprovementBusyId] = useState<string | null>(null);
@@ -906,20 +920,61 @@ export default function ContentPipelinePage() {
     }
   };
 
-  const openAddModal = () => {
+  const openAddModal = (mode: "new" | "published" = "new") => {
+    setAddMode(mode);
     setNewType("I");
     setNewFields({});
     setAddError(null);
     setLookupNote(null);
+    setPubUrl("");
+    setPubFetched(null);
+    setPubFetchError(null);
     setAdding(true);
   };
+
+  // 발행글 태그 중 첫 번째를 키워드(타입 I의 meta) 기본값으로 — 다른 타입의 meta는 파트너라 채우지 않는다.
+  const prefillFromPost = (type: Idea["type"], post: FetchedPublishedPost, title: string): Record<string, string> =>
+    type === "I" && post.tags.length > 0 ? { title, meta: post.tags[0] } : { title };
 
   const changeNewType = (type: Idea["type"]) => {
     setNewType(type);
     // 타입마다 컬럼이 달라서 이전 입력을 옮길 수 없다 — 제목만 유지하고 나머지는 비운다.
-    setNewFields((prev) => ({ title: prev.title ?? "" }));
+    setNewFields((prev) =>
+      addMode === "published" && pubFetched
+        ? prefillFromPost(type, pubFetched, prev.title ?? "")
+        : { title: prev.title ?? "" }
+    );
     setAddError(null);
     setLookupNote(null);
+  };
+
+  const fetchPublishedPost = async () => {
+    const url = pubUrl.trim();
+    if (!url) return;
+    setPubFetchBusy(true);
+    setPubFetchError(null);
+    setPubFetched(null);
+    try {
+      const res = await fetch("/api/content-pipeline/ideas/from-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPubFetchError(data.error ?? "발행글을 불러오지 못했습니다");
+        return;
+      }
+      const post = data as FetchedPublishedPost;
+      setPubFetched(post);
+      setNewFields(prefillFromPost(newType, post, post.title));
+      setAddError(null);
+      setLookupNote(null);
+    } catch {
+      setPubFetchError("발행글을 불러오지 못했습니다");
+    } finally {
+      setPubFetchBusy(false);
+    }
   };
 
   const lookupKeyword = async () => {
@@ -977,7 +1032,13 @@ export default function ContentPipelinePage() {
       const res = await fetch("/api/content-pipeline/ideas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: newType, title, meta: (newFields.meta ?? "").trim(), extra }),
+        body: JSON.stringify({
+          type: newType,
+          title,
+          meta: (newFields.meta ?? "").trim(),
+          extra,
+          ...(addMode === "published" && pubFetched ? { publishedUrl: pubFetched.url } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1289,8 +1350,16 @@ export default function ContentPipelinePage() {
             active={statusFilter === "has_draft"}
           />
           <StatTile label="케이던스" value={stats.cadenceSub.includes("충족") ? "OK" : "확인 필요"} sub={stats.cadenceSub} />
-          <div className="ml-auto">
-            <PrimaryButton onClick={openAddModal} color="var(--accent)" icon={Plus}>
+          <div className="ml-auto flex gap-2">
+            <PrimaryButton
+              onClick={() => openAddModal("published")}
+              color="var(--success)"
+              icon={Link2}
+              variant="outline"
+            >
+              발행글 등록
+            </PrimaryButton>
+            <PrimaryButton onClick={() => openAddModal("new")} color="var(--accent)" icon={Plus}>
               소재 추가
             </PrimaryButton>
           </div>
@@ -1733,13 +1802,95 @@ export default function ContentPipelinePage() {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold" style={{ color: "var(--text-primary)" }}>
-                소재 추가
+                {addMode === "published" ? "발행글 등록" : "소재 추가"}
               </h3>
               <button onClick={() => setAdding(false)} style={{ color: "var(--text-muted)" }}>
                 <X className="w-4 h-4" />
               </button>
             </div>
 
+            {addMode === "published" && (
+              <div className="mb-4">
+                <label className="text-xs block mb-1" style={{ color: "var(--text-secondary)" }}>
+                  발행글 URL<span style={{ color: "var(--accent)" }}> *</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    value={pubUrl}
+                    onChange={(e) => {
+                      setPubUrl(e.target.value);
+                      // URL을 바꾸면 이전에 불러온 글과 어긋나므로 다시 불러오게 한다.
+                      setPubFetched(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") fetchPublishedPost();
+                    }}
+                    placeholder="https://blog.naver.com/mesure/224388422967"
+                    className="w-full p-2 rounded-lg text-sm"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                  <button
+                    onClick={fetchPublishedPost}
+                    disabled={pubFetchBusy || !pubUrl.trim()}
+                    className="text-xs font-semibold px-3 rounded-lg inline-flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    {pubFetchBusy ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Search className="w-3.5 h-3.5" />
+                    )}
+                    불러오기
+                  </button>
+                </div>
+                {pubFetchError && (
+                  <p className="text-xs mt-1" style={{ color: "var(--error)" }}>
+                    {pubFetchError}
+                  </p>
+                )}
+                {pubFetched && (
+                  <div className="text-xs mt-2 space-y-1.5" style={{ color: "var(--text-muted)" }}>
+                    <p>
+                      불러옴 · 발행일 {pubFetched.publishedAt ?? "확인 불가(오늘 날짜로 기록)"} · 등록하면 바로
+                      &lsquo;발행완료&rsquo;로 들어갑니다
+                    </p>
+                    {pubFetched.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 items-center">
+                        <span>태그{newType === "I" ? "(누르면 키워드로)" : ""}:</span>
+                        {pubFetched.tags.map((tag) => (
+                          <button
+                            key={tag}
+                            disabled={newType !== "I"}
+                            onClick={() => setNewFields((prev) => ({ ...prev, meta: tag }))}
+                            className="px-1.5 py-0.5 rounded"
+                            style={{
+                              backgroundColor:
+                                newType === "I" && newFields.meta === tag ? "var(--info)" : "var(--surface)",
+                              color: newType === "I" && newFields.meta === tag ? "#fff" : "var(--text-secondary)",
+                              border: "1px solid var(--border)",
+                              cursor: newType === "I" ? "pointer" : "default",
+                            }}
+                          >
+                            #{tag}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(addMode === "new" || pubFetched) && (
+            <>
             <div className="flex gap-2 mb-4">
               {(["I", "B", "A"] as Idea["type"][]).map((type) => {
                 const meta = TYPE_META[type];
@@ -1853,6 +2004,8 @@ export default function ContentPipelinePage() {
             >
               {addSubmitting ? "등록 중..." : "등록"}
             </PrimaryButton>
+            </>
+            )}
           </div>
         </div>
       )}
