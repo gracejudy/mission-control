@@ -44,7 +44,8 @@ export async function emitSignal(record: Omit<SignalRecord, 'collectedAt'>): Pro
 }
 
 export type IdeaType = 'I' | 'B' | 'A';
-export type IdeaStatus = 'idle' | 'requested' | 'draft' | 'published';
+/** 'deleted'는 ideas.md에서 행이 지워진 소재의 status.json 흔적 — 화면엔 안 나오고(ideas.md 기준으로 그림) ID 재사용만 막는다. */
+export type IdeaStatus = 'idle' | 'requested' | 'draft' | 'published' | 'deleted';
 
 export interface RawIdea {
   id: string;
@@ -89,6 +90,9 @@ export interface StatusEntry {
   affiliateProgram?: string;
   /** 2026-09-14: 실제로 이 글에 삽입한 제휴링크 URL(예: https://3ha.in/r/706390). 발행 시점엔 몰라서 나중에 채워지는 경우가 많아 publish API가 아니라 별도 PATCH(affiliate/[id])로만 갱신한다. */
   affiliateLink?: string;
+  /** 2026-10-06: 소재 삭제 시각과 삭제 당시 제목(행이 지워져서 이게 없으면 무슨 소재였는지 알 수 없다). */
+  deletedAt?: string;
+  deletedTitle?: string;
 }
 
 export type StatusMap = Record<string, StatusEntry>;
@@ -279,6 +283,63 @@ export function appendIdea(input: NewIdeaInput): Promise<RawIdea> {
       idea.extra[cols[i]] = filled[i];
     }
     return idea;
+  });
+}
+
+export class IdeaNotDeletableError extends Error {}
+
+/**
+ * 2026-10-06: 초안 상태의 소재를 삭제한다. ideas.md에서 그 행만 지우고(다른 행·섹션은 그대로),
+ * 초안 파일은 지우지 않고 drafts/_deleted/로 옮기고, status.json 항목은 'deleted'로 남긴다 —
+ * nextIdeaId가 status.json 키도 보기 때문에 같은 ID가 다시 발급되지 않고(signals의 entityId와
+ * 섞이지 않게), workflow.md 주간 리뷰의 "status: draft 대조"에도 걸리지 않는다.
+ * 초안 상태가 아닌 소재(특히 발행완료)는 성과 이력이 걸려 있어 지우지 않는다.
+ */
+export function deleteDraftIdea(id: string): Promise<{ id: string; title: string; movedDraftFile?: string }> {
+  return withIdeasLock(async () => {
+    const status = await readStatus();
+    const entry = status[id];
+    if (entry?.status !== 'draft') {
+      throw new IdeaNotDeletableError(`초안 상태인 소재만 삭제할 수 있습니다 (${id}: ${entry?.status ?? 'idle'})`);
+    }
+
+    const raw = await fs.readFile(IDEAS_MD_PATH, 'utf-8');
+    const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+    const lines = raw.split(/\r?\n/);
+    const rowRe = new RegExp(`^\\|\\s*${id}\\s*\\|`);
+    const rows = lines.map((line, i) => (rowRe.test(line) ? i : -1)).filter((i) => i !== -1);
+    if (rows.length !== 1) {
+      throw new Error(`ideas.md에서 ${id} 행을 하나로 특정할 수 없습니다 (${rows.length}개)`);
+    }
+    const title = parseIdeasMarkdown(raw).find((i) => i.id === id)?.title ?? '';
+
+    let movedDraftFile: string | undefined;
+    if (entry.draftFile) {
+      const src = resolveInPipelineDir(entry.draftFile);
+      const rel = path.join('drafts', '_deleted', path.basename(entry.draftFile));
+      try {
+        await fs.mkdir(path.join(DRAFTS_DIR, '_deleted'), { recursive: true });
+        await fs.rename(src, resolveInPipelineDir(rel));
+        movedDraftFile = rel;
+      } catch (error) {
+        // 초안 파일이 이미 없으면 옮길 것도 없다 — 소재 삭제 자체는 진행.
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+
+    lines.splice(rows[0], 1);
+    const tmpPath = `${IDEAS_MD_PATH}.tmp`;
+    await fs.writeFile(tmpPath, lines.join(eol));
+    await fs.rename(tmpPath, IDEAS_MD_PATH);
+
+    await updateStatus(id, {
+      status: 'deleted',
+      deletedAt: new Date().toISOString(),
+      deletedTitle: title,
+      draftFile: movedDraftFile,
+    });
+
+    return { id, title, movedDraftFile };
   });
 }
 

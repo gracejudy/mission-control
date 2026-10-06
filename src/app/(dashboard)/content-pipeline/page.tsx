@@ -25,6 +25,7 @@ import {
   ChevronDown,
   ChevronUp,
   Link2,
+  Trash2,
 } from "lucide-react";
 
 type AffiliateLinkSource = "3ha" | "brandconnect";
@@ -693,6 +694,10 @@ export default function ContentPipelinePage() {
 
   const [redraftingId, setRedraftingId] = useState<string | null>(null);
   const [redraftMemo, setRedraftMemo] = useState("");
+  // 2026-10-06: 초안 상태 소재 삭제 — 한 번 더 누르게 하는 인라인 확인(브라우저 confirm 대신).
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [automation, setAutomation] = useState<AutomationState | null>(null);
   const [automationBusy, setAutomationBusy] = useState(false);
@@ -1073,6 +1078,25 @@ export default function ContentPipelinePage() {
   const openRedraftForm = (id: string) => {
     setRedraftingId(id);
     setRedraftMemo("");
+  };
+
+  const deleteIdea = async (id: string) => {
+    setDeletingId(id);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/content-pipeline/ideas/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteError(data.error ?? "소재 삭제에 실패했습니다");
+        return;
+      }
+      setConfirmDeleteId(null);
+      await fetchIdeas();
+    } catch {
+      setDeleteError("소재 삭제에 실패했습니다");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const redraft = async (id: string, memo: string) => {
@@ -1639,6 +1663,48 @@ export default function ContentPipelinePage() {
                                 >
                                   재발행
                                 </PrimaryButton>
+                                {confirmDeleteId !== idea.id && (
+                                  <PrimaryButton
+                                    onClick={() => {
+                                      setConfirmDeleteId(idea.id);
+                                      setDeleteError(null);
+                                    }}
+                                    color="var(--error)"
+                                    icon={Trash2}
+                                    variant="outline"
+                                  >
+                                    삭제
+                                  </PrimaryButton>
+                                )}
+                              </div>
+                            )}
+                            {idea.status === "draft" && confirmDeleteId === idea.id && (
+                              <div className="flex flex-col gap-1.5 mt-2">
+                                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                                  [{idea.id}] 소재를 삭제할까요? 초안 파일은 drafts/_deleted/로 옮겨 보관됩니다.
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <PrimaryButton
+                                    onClick={() => deleteIdea(idea.id)}
+                                    disabled={deletingId === idea.id}
+                                    color="var(--error)"
+                                    icon={Trash2}
+                                  >
+                                    {deletingId === idea.id ? "삭제 중..." : "삭제 확인"}
+                                  </PrimaryButton>
+                                  <button
+                                    onClick={() => setConfirmDeleteId(null)}
+                                    className="text-xs"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                                {deleteError && (
+                                  <p className="text-xs" style={{ color: "var(--error)" }}>
+                                    {deleteError}
+                                  </p>
+                                )}
                               </div>
                             )}
                             {idea.status === "draft" && redraftingId === idea.id && (
