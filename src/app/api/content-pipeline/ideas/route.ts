@@ -11,6 +11,8 @@ import {
   FetchedNaverPost,
   fetchNaverPost,
   findIdeaByPublishedUrl,
+  findIdeaByTitle,
+  cancelPendingDraftRequests,
   recordPublishedPost,
 } from '@/lib/content-pipeline';
 
@@ -78,6 +80,22 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         const message = error instanceof Error ? error.message : '발행글을 불러오지 못했습니다';
         return NextResponse.json({ error: message }, { status: 502 });
+      }
+
+      // 2026-10-06: 같은 제목의 소재가 이미 있으면 새로 만들지 않고 그 소재에 발행 기록을 붙인다
+      // ("소재로 먼저 넣고 글은 나중에 올린" 경우). 대기 중인 초안 요청은 발행된 글의 초안을 새로
+      // 쓰게 되므로 함께 지운다. 이미 다른 글로 발행된 소재면 덮어쓰지 않고 거부한다.
+      const linked = await findIdeaByTitle(post.title);
+      if (linked) {
+        if (linked.status === 'published') {
+          return NextResponse.json(
+            { error: `같은 제목의 소재(${linked.id})가 이미 다른 글로 발행완료 상태입니다` },
+            { status: 409 }
+          );
+        }
+        const cancelled = await cancelPendingDraftRequests(linked.id);
+        const entry = await recordPublishedPost(linked.id, publishedUrl, post, { publishedAt: post.publishedAt });
+        return NextResponse.json({ ...linked, ...entry, linked: true, cancelledTasks: cancelled });
       }
     }
 

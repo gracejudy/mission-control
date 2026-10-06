@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchNaverPost, findIdeaByPublishedUrl, readStatus } from '@/lib/content-pipeline';
+import { fetchNaverPost, findIdeaByPublishedUrl, findIdeaByTitle, readStatus } from '@/lib/content-pipeline';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,11 +28,22 @@ export async function POST(request: NextRequest) {
     }
 
     const post = await fetchNaverPost(url);
+
+    // 2026-10-06: 같은 제목의 소재가 있으면 등록 시 새로 만들지 않고 그 소재에 연결된다(POST /ideas와 같은 판정).
+    const linked = await findIdeaByTitle(post.title);
+    if (linked?.status === 'published') {
+      return NextResponse.json(
+        { error: `같은 제목의 소재(${linked.id})가 이미 다른 글로 발행완료 상태입니다`, existingId: linked.id },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json({
       url,
       title: post.title,
       tags: post.tags,
       publishedAt: post.publishedAt ?? null,
+      linkTo: linked ? { id: linked.id, type: linked.type, title: linked.title, status: linked.status } : null,
     });
   } catch (error) {
     console.error('Failed to fetch published post for idea:', error);

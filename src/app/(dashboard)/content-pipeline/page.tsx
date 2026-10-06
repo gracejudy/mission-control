@@ -160,6 +160,8 @@ interface FetchedPublishedPost {
   title: string;
   tags: string[];
   publishedAt: string | null;
+  /** 같은 제목의 미발행 소재 — 있으면 등록 시 새 소재 대신 이 소재에 발행 기록이 붙는다. */
+  linkTo: { id: string; type: Idea["type"]; title: string; status: Idea["status"] } | null;
 }
 
 const STATUS_META: Record<Idea["status"], { label: string; color: string }> = {
@@ -1889,7 +1891,29 @@ export default function ContentPipelinePage() {
               </div>
             )}
 
-            {(addMode === "new" || pubFetched) && (
+            {addMode === "published" && pubFetched?.linkTo && (
+              <div>
+                <p className="text-xs mb-3" style={{ color: "var(--text-secondary)" }}>
+                  같은 제목의 소재{" "}
+                  <span className="font-semibold" style={{ color: VALUE_BRIGHT }}>
+                    [{pubFetched.linkTo.id}] {pubFetched.linkTo.title}
+                  </span>{" "}
+                  ({STATUS_META[pubFetched.linkTo.status].label})가 있습니다. 새 소재를 만들지 않고 이 소재를
+                  &lsquo;발행완료&rsquo;로 바꿉니다
+                  {pubFetched.linkTo.status === "requested" ? " — 대기 중인 초안 요청은 취소됩니다" : ""}.
+                </p>
+                {addError && (
+                  <p className="text-xs mb-3" style={{ color: "var(--error)" }}>
+                    {addError}
+                  </p>
+                )}
+                <PrimaryButton onClick={submitNewIdea} disabled={addSubmitting} color="var(--success)" icon={Link2}>
+                  {addSubmitting ? "연결 중..." : `${pubFetched.linkTo.id}에 발행 기록 연결`}
+                </PrimaryButton>
+              </div>
+            )}
+
+            {(addMode === "new" || (pubFetched && !pubFetched.linkTo)) && (
             <>
             <div className="flex gap-2 mb-4">
               {(["I", "B", "A"] as Idea["type"][]).map((type) => {

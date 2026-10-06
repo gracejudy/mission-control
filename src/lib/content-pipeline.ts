@@ -823,11 +823,19 @@ export async function fetchNaverPost(url: string): Promise<FetchedNaverPost> {
   return { title, text, links, imageCount: imageNames.length, imageNames, tags, publishedAt };
 }
 
-/** se_publishDate("2026. 8. 24. 13:34") → "2026-08-24". 오늘 발행글은 "3시간 전"처럼 상대 표기라 undefined. */
+/**
+ * se_publishDate → "YYYY-MM-DD"(KST). 절대 표기("2026. 8. 24. 13:34")와, 최근 글의 상대 표기
+ * ("방금 전" / "N분 전" / "N시간 전")를 모두 처리한다 — 2026-10-06: 상대 표기를 오늘로 치면
+ * 자정 넘어 등록한 전날 글이 하루 밀려 기록돼서, 현재 시각에서 거꾸로 계산한다.
+ */
 function extractPublishDate(html: string): string | undefined {
-  const m = html.match(/se_publishDate[^>]*>\s*(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\./);
-  if (!m) return undefined;
-  return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  const abs = html.match(/se_publishDate[^>]*>\s*(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\./);
+  if (abs) return `${abs[1]}-${abs[2].padStart(2, '0')}-${abs[3].padStart(2, '0')}`;
+
+  const rel = html.match(/se_publishDate[^>]*>\s*(?:(방금)\s*전|(\d+)\s*(분|시간)\s*전)/);
+  if (!rel) return undefined;
+  const minutes = rel[1] ? 0 : parseInt(rel[2], 10) * (rel[3] === '시간' ? 60 : 1);
+  return new Date(Date.now() - minutes * 60_000).toLocaleDateString('sv', { timeZone: 'Asia/Seoul' });
 }
 
 /** 글 태그 목록. PostView HTML의 태그 영역은 JS로 채워져서 비어 있고, 실제 값은 BlogTagListInfo API(2026-10-05 실측: 리퍼러·로그인 없이 200)에 쉼표로 이어진 URL 인코딩 문자열로 온다. */
@@ -862,6 +870,36 @@ export function findIdeaByPublishedUrl(status: StatusMap, url: string): string |
     }
   }
   return null;
+}
+
+/**
+ * 발행글 제목과 같은 제목의 기존 소재(타입 무관). 2026-10-06: "소재로 먼저 넣고 글은 나중에 올린" 경우
+ * 발행글 등록이 새 소재를 만들지 않고 이 소재에 발행 기록을 붙이도록 찾는다. 네이버 <title>은
+ * HTML 엔티티(&amp; 등)가 섞여 올 수 있어 풀어서 비교한다.
+ */
+export async function findIdeaByTitle(title: string): Promise<Idea | null> {
+  const target = decodeHtmlEntities(title).trim();
+  const [ideas, status] = await Promise.all([readIdeas(), readStatus()]);
+  const match = ideas.find((i) => i.title.trim() === target);
+  return match ? mergeIdeaWithStatus(match, status) : null;
+}
+
+/**
+ * 소재 `id`의 처리 대기 중인 초안 요청 파일(tasks/{ts}-{id}.md)을 지운다. 이미 발행된 글을
+ * 기존 소재에 연결할 때, 남아 있는 초안 요청을 queue-watcher가 집어서 발행된 글의 초안을 새로
+ * 쓰지 않게 하려는 것. 개선 제안 요청(-improve.md)과 처리 완료분(_done/)은 건드리지 않는다.
+ */
+export async function cancelPendingDraftRequests(id: string): Promise<string[]> {
+  let files: string[];
+  try {
+    files = await fs.readdir(TASKS_DIR);
+  } catch {
+    return [];
+  }
+  const re = new RegExp(`^\\d{4}-\\d{2}-\\d{2}T[\\d-]+-${id}\\.md$`);
+  const removed = files.filter((f) => re.test(f));
+  for (const f of removed) await fs.unlink(path.join(TASKS_DIR, f));
+  return removed;
 }
 
 function todayKST(): string {
