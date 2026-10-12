@@ -1773,14 +1773,14 @@ export default function ContentPipelinePage() {
                                     </a>
                                   )}
                                   {editingAffiliateId !== idea.id && (
-                                    <button
+                                    <PrimaryButton
                                       onClick={() => openAffiliateEditor(idea)}
-                                      className="text-[11px] inline-flex items-center gap-1"
-                                      style={{ color: "var(--text-muted)" }}
+                                      color={idea.affiliateProgram || idea.affiliateLink ? "var(--text-muted)" : "var(--info)"}
+                                      icon={PenLine}
+                                      variant="outline"
                                     >
-                                      <PenLine className="w-3 h-3" />
                                       {idea.affiliateProgram || idea.affiliateLink ? "제휴정보 수정" : "제휴링크 추가"}
-                                    </button>
+                                    </PrimaryButton>
                                   )}
                                 </div>
                                 {editingAffiliateId === idea.id && (

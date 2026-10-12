@@ -537,7 +537,17 @@ export async function computeSuggestions(
     const observedMs = new Date(latest.observedAt).getTime();
     const daysSincePublish = (observedMs - publishedMs) / (1000 * 60 * 60 * 24);
 
-    if (value <= 2 && daysSincePublish >= 14) {
+    const hasAffiliate = !!(entry.affiliateProgram || entry.affiliateLink);
+
+    if (value >= 10 && !hasAffiliate && daysSincePublish <= 30) {
+      suggestions[idea.id] = {
+        type: 'add_link',
+        reason: `주간조회수 ${value} — 제휴링크 없는 발행글에 조회수가 잘 나오고 있어 링크 추가 권장`,
+        confidence: value >= 20 ? 'high' : 'low',
+        basedOn: [`naver-blog-stats: weeklyViews=${latest.value} observedAt=${latest.observedAt}`],
+        computedAt: now,
+      };
+    } else if (value <= 2 && daysSincePublish >= 14) {
       suggestions[idea.id] = {
         type: 'review',
         reason: `주간조회수 ${value} (발행 ${Math.round(daysSincePublish)}일 경과 시점 관측) — 정체 여부 검토 필요`,
