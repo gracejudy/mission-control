@@ -122,7 +122,7 @@ export default function MemoryPage() {
   const selectedWorkspaceData = workspaces.find((w) => w.id === selectedWorkspace);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 48px - 32px - 48px)" }}>
       {/* Page header */}
       <div style={{ padding: "24px 24px 16px 24px", flexShrink: 0 }}>
         <h1
@@ -396,7 +396,15 @@ export default function MemoryPage() {
                   }}
                 >
                   {selectedPath ? (
-                    <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                    <div
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflow: viewMode === "edit" ? "hidden" : "auto",
+                        display: viewMode === "edit" ? "flex" : "block",
+                        flexDirection: "column",
+                      }}
+                    >
                       {viewMode === "edit" ? (
                         <MarkdownEditor
                           content={content}
@@ -405,7 +413,7 @@ export default function MemoryPage() {
                           hasUnsavedChanges={hasUnsavedChanges}
                         />
                       ) : (
-                        <MarkdownPreview content={content} />
+                        <MarkdownPreview content={selectedPath.endsWith(".yaml") || selectedPath.endsWith(".json") ? "```" + selectedPath.split(".").pop() + "\n" + content + "\n```" : content} />
                       )}
                     </div>
                   ) : (

@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { resolveWorkspacePath } from '@/lib/hermes-workspace';
+import { listPersonaFiles } from '@/lib/hermes-persona-files';
 
 interface SearchResult {
   file: string;
@@ -54,11 +55,11 @@ async function searchFile(filePath: string, query: string, displayPath: string):
   }
 }
 
-async function getFiles(workspacePath: string): Promise<Array<{ path: string; display: string }>> {
+async function getFiles(workspacePath: string, workspace: string): Promise<Array<{ path: string; display: string }>> {
   const files: Array<{ path: string; display: string }> = [];
 
-  // Profile root: just SOUL.md in Hermes
-  const rootFiles = ['SOUL.md'];
+  // Profile root: SOUL.md and config.yaml (permissions) in Hermes
+  const rootFiles = workspace === 'default' ? ['SOUL.md', 'config.yaml'] : ['SOUL.md'];
   for (const f of rootFiles) {
     const full = path.join(workspacePath, f);
     try {
@@ -78,6 +79,13 @@ async function getFiles(workspacePath: string): Promise<Array<{ path: string; di
     }
   } catch {}
 
+  // Persona character-setting files (config/, persona skills, ...) for non-default profiles
+  if (workspace !== 'default') {
+    for (const rel of await listPersonaFiles(workspacePath)) {
+      files.push({ path: path.join(workspacePath, rel), display: rel });
+    }
+  }
+
   return files;
 }
 
@@ -96,7 +104,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
     }
 
-    const files = await getFiles(workspacePath);
+    const files = await getFiles(workspacePath, workspace);
     const results = await Promise.all(files.map((f) => searchFile(f.path, query, f.display)));
     const sorted = results
       .filter(Boolean)

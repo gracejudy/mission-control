@@ -56,7 +56,7 @@ export function MarkdownEditor({
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col">
       {/* Toolbar */}
       <div
         className="flex items-center justify-between px-4 py-2"
@@ -108,7 +108,7 @@ export function MarkdownEditor({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder="Select a file to edit..."
-        className="flex-1 w-full p-4 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex-1 min-h-0 w-full p-4 resize-none overflow-auto focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
         style={{
           backgroundColor: "var(--card)",
           color: "var(--text-primary)",

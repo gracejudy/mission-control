@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
 import { resolveWorkspacePath } from "@/lib/hermes-workspace";
+import { listPersonaFiles, buildPersonaTree } from "@/lib/hermes-persona-files";
 
 // Files to show in the memory browser
 // Hermes keeps only SOUL.md at the profile root; MEMORY.md/USER.md live in memories/
-const ROOT_FILES = ["SOUL.md"];
+// config.yaml holds the profile's permission settings (approvals, command_allowlist) — read-only here
+const ROOT_FILES = ["SOUL.md", "config.yaml"];
+const READONLY_FILES = ["config.yaml"];
+// config.yaml is surfaced only under the default workspace in the UI
+const DEFAULT_ONLY_FILES = ["config.yaml"];
+
+function rootFilesFor(workspace: string): string[] {
+  return ROOT_FILES.filter((f) => workspace === "default" || !DEFAULT_ONLY_FILES.includes(f));
+}
 const MEMORY_DIR = "memories";
 
 interface FileNode {
@@ -24,11 +33,11 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-async function getFileTree(workspacePath: string): Promise<FileNode[]> {
+async function getFileTree(workspacePath: string, workspace: string): Promise<FileNode[]> {
   const tree: FileNode[] = [];
 
   // Add root markdown files
-  for (const file of ROOT_FILES) {
+  for (const file of rootFilesFor(workspace)) {
     const fullPath = path.join(workspacePath, file);
     if (await fileExists(fullPath)) {
       tree.push({
@@ -68,30 +77,37 @@ async function getFileTree(workspacePath: string): Promise<FileNode[]> {
     }
   }
 
+  // Character-setting files (config/, skills/roleplay/<persona skills>, ...) for persona profiles
+  if (workspace !== "default") {
+    tree.push(...buildPersonaTree(await listPersonaFiles(workspacePath)));
+  }
+
   return tree;
 }
 
-function sanitizePath(requestedPath: string): string | null {
+async function sanitizePath(
+  requestedPath: string,
+  workspace: string,
+  workspacePath: string
+): Promise<string | null> {
   // Prevent directory traversal
   const normalized = path.normalize(requestedPath);
   if (normalized.startsWith("..") || path.isAbsolute(normalized)) {
     return null;
   }
 
-  // Only allow .md files
-  if (!normalized.endsWith(".md")) {
-    return null;
+  // Root files (SOUL.md, and the read-only config.yaml under default)
+  if (rootFilesFor(workspace).includes(normalized)) return normalized;
+
+  // Files in memories/
+  if (normalized.endsWith(".md") && normalized.startsWith(`${MEMORY_DIR}/`)) return normalized;
+
+  // Persona character-setting files: only ones that actually exist in the listing
+  if (workspace !== "default" && (await listPersonaFiles(workspacePath)).includes(normalized)) {
+    return normalized;
   }
 
-  // Only allow root files or files in memory/
-  const isRootFile = ROOT_FILES.includes(normalized);
-  const isMemoryFile = normalized.startsWith(`${MEMORY_DIR}/`);
-
-  if (!isRootFile && !isMemoryFile) {
-    return null;
-  }
-
-  return normalized;
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -110,12 +126,12 @@ export async function GET(request: NextRequest) {
 
     if (!filePath) {
       // Return file tree
-      const tree = await getFileTree(workspacePath);
+      const tree = await getFileTree(workspacePath, workspace);
       return NextResponse.json(tree);
     }
 
     // Read specific file
-    const safePath = sanitizePath(filePath);
+    const safePath = await sanitizePath(filePath, workspace, workspacePath);
     if (!safePath) {
       return NextResponse.json(
         { error: "Invalid file path" },
@@ -154,7 +170,15 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const safePath = sanitizePath(filePath);
+    const workspacePath = resolveWorkspacePath(workspace);
+    if (!workspacePath) {
+      return NextResponse.json(
+        { error: "Workspace not found" },
+        { status: 404 }
+      );
+    }
+
+    const safePath = await sanitizePath(filePath, workspace, workspacePath);
     if (!safePath) {
       return NextResponse.json(
         { error: "Invalid file path" },
@@ -162,12 +186,17 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const workspacePath = resolveWorkspacePath(workspace);
-    if (!workspacePath) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
+    if (READONLY_FILES.includes(safePath)) {
+      return NextResponse.json({ error: "Read-only file" }, { status: 403 });
+    }
+
+    // Hooks read config/*.json at runtime — never write something that doesn't parse
+    if (safePath.endsWith(".json")) {
+      try {
+        JSON.parse(content);
+      } catch {
+        return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+      }
     }
 
     const fullPath = path.join(workspacePath, safePath);
