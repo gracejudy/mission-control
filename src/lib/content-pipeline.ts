@@ -289,18 +289,24 @@ export function appendIdea(input: NewIdeaInput): Promise<RawIdea> {
 export class IdeaNotDeletableError extends Error {}
 
 /**
- * 2026-10-06: 초안 상태의 소재를 삭제한다. ideas.md에서 그 행만 지우고(다른 행·섹션은 그대로),
- * 초안 파일은 지우지 않고 drafts/_deleted/로 옮기고, status.json 항목은 'deleted'로 남긴다 —
- * nextIdeaId가 status.json 키도 보기 때문에 같은 ID가 다시 발급되지 않고(signals의 entityId와
- * 섞이지 않게), workflow.md 주간 리뷰의 "status: draft 대조"에도 걸리지 않는다.
- * 초안 상태가 아닌 소재(특히 발행완료)는 성과 이력이 걸려 있어 지우지 않는다.
+ * 소재를 삭제한다(상태 무관 — 2026-10-19: 초안 상태만 지우던 제한을 풀었다). ideas.md에서 그 행만
+ * 지우고(다른 행·섹션은 그대로), 초안 파일은 지우지 않고 drafts/_deleted/로 옮기고,
+ * status.json 항목은 'deleted'로 남긴다 — nextIdeaId가 status.json 키도 보기 때문에 같은 ID가
+ * 다시 발급되지 않고(signals의 entityId와 섞이지 않게), workflow.md 주간 리뷰의 "status: draft 대조"와
+ * actionNeeded 대상에서도 빠진다. 초안 요청 대기 중(requested)이면 queue 요청 파일도 취소한다.
+ * 발행완료(published) 소재는 성과 이력(signals·제휴 정보)이 걸려 있어 계속 삭제를 막는다(2026-10-19 사용자 결정).
  */
-export function deleteDraftIdea(id: string): Promise<{ id: string; title: string; movedDraftFile?: string }> {
+export function deleteIdea(
+  id: string
+): Promise<{ id: string; title: string; movedFiles: string[]; cancelledRequests: string[] }> {
   return withIdeasLock(async () => {
     const status = await readStatus();
     const entry = status[id];
-    if (entry?.status !== 'draft') {
-      throw new IdeaNotDeletableError(`초안 상태인 소재만 삭제할 수 있습니다 (${id}: ${entry?.status ?? 'idle'})`);
+    if (entry?.status === 'deleted') {
+      throw new IdeaNotDeletableError(`이미 삭제된 소재입니다 (${id})`);
+    }
+    if (entry?.status === 'published') {
+      throw new IdeaNotDeletableError(`발행완료 소재는 삭제할 수 없습니다 — 성과 이력이 걸려 있습니다 (${id})`);
     }
 
     const raw = await fs.readFile(IDEAS_MD_PATH, 'utf-8');
@@ -313,19 +319,25 @@ export function deleteDraftIdea(id: string): Promise<{ id: string; title: string
     }
     const title = parseIdeasMarkdown(raw).find((i) => i.id === id)?.title ?? '';
 
-    let movedDraftFile: string | undefined;
-    if (entry.draftFile) {
-      const src = resolveInPipelineDir(entry.draftFile);
-      const rel = path.join('drafts', '_deleted', path.basename(entry.draftFile));
+    const cancelledRequests = entry?.status === 'requested' ? await cancelPendingDraftRequests(id) : [];
+
+    const movedFiles: string[] = [];
+    const moveToDeleted = async (relFile: string | undefined): Promise<string | undefined> => {
+      if (!relFile) return undefined;
+      const src = resolveInPipelineDir(relFile);
+      const rel = path.join('drafts', '_deleted', path.basename(relFile));
       try {
         await fs.mkdir(path.join(DRAFTS_DIR, '_deleted'), { recursive: true });
         await fs.rename(src, resolveInPipelineDir(rel));
-        movedDraftFile = rel;
+        movedFiles.push(rel);
+        return rel;
       } catch (error) {
-        // 초안 파일이 이미 없으면 옮길 것도 없다 — 소재 삭제 자체는 진행.
+        // 파일이 이미 없으면 옮길 것도 없다 — 소재 삭제 자체는 진행.
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        return undefined;
       }
-    }
+    };
+    const movedDraftFile = await moveToDeleted(entry?.draftFile);
 
     lines.splice(rows[0], 1);
     const tmpPath = `${IDEAS_MD_PATH}.tmp`;
@@ -337,9 +349,11 @@ export function deleteDraftIdea(id: string): Promise<{ id: string; title: string
       deletedAt: new Date().toISOString(),
       deletedTitle: title,
       draftFile: movedDraftFile,
+      actionNeeded: undefined,
+      suggestedActionNeeded: undefined,
     });
 
-    return { id, title, movedDraftFile };
+    return { id, title, movedFiles, cancelledRequests };
   });
 }
 

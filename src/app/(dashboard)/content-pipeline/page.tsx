@@ -1663,48 +1663,6 @@ export default function ContentPipelinePage() {
                                 >
                                   재발행
                                 </PrimaryButton>
-                                {confirmDeleteId !== idea.id && (
-                                  <PrimaryButton
-                                    onClick={() => {
-                                      setConfirmDeleteId(idea.id);
-                                      setDeleteError(null);
-                                    }}
-                                    color="var(--error)"
-                                    icon={Trash2}
-                                    variant="outline"
-                                  >
-                                    삭제
-                                  </PrimaryButton>
-                                )}
-                              </div>
-                            )}
-                            {idea.status === "draft" && confirmDeleteId === idea.id && (
-                              <div className="flex flex-col gap-1.5 mt-2">
-                                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                                  [{idea.id}] 소재를 삭제할까요? 초안 파일은 drafts/_deleted/로 옮겨 보관됩니다.
-                                </p>
-                                <div className="flex items-center gap-2">
-                                  <PrimaryButton
-                                    onClick={() => deleteIdea(idea.id)}
-                                    disabled={deletingId === idea.id}
-                                    color="var(--error)"
-                                    icon={Trash2}
-                                  >
-                                    {deletingId === idea.id ? "삭제 중..." : "삭제 확인"}
-                                  </PrimaryButton>
-                                  <button
-                                    onClick={() => setConfirmDeleteId(null)}
-                                    className="text-xs"
-                                    style={{ color: "var(--text-muted)" }}
-                                  >
-                                    취소
-                                  </button>
-                                </div>
-                                {deleteError && (
-                                  <p className="text-xs" style={{ color: "var(--error)" }}>
-                                    {deleteError}
-                                  </p>
-                                )}
                               </div>
                             )}
                             {idea.status === "draft" && redraftingId === idea.id && (
@@ -1844,6 +1802,53 @@ export default function ContentPipelinePage() {
                                     if (run) decideImprovement(idea.id, run.meta.requestTs, itemId, decision);
                                   }}
                                 />
+                              </div>
+                            )}
+                            {redraftingId !== idea.id && idea.status !== "published" && (
+                              <div className="mt-2">
+                                {confirmDeleteId !== idea.id ? (
+                                  <PrimaryButton
+                                    onClick={() => {
+                                      setConfirmDeleteId(idea.id);
+                                      setDeleteError(null);
+                                    }}
+                                    color="var(--error)"
+                                    icon={Trash2}
+                                    variant="outline"
+                                  >
+                                    삭제
+                                  </PrimaryButton>
+                                ) : (
+                                  <div className="flex flex-col gap-1.5">
+                                    <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                                      [{idea.id}] 소재를 삭제할까요?
+                                      {idea.status === "requested" && " 대기 중인 초안 요청은 취소됩니다."}
+                                      {idea.status === "draft" && " 초안 파일은 drafts/_deleted/로 옮겨 보관됩니다."}
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      <PrimaryButton
+                                        onClick={() => deleteIdea(idea.id)}
+                                        disabled={deletingId === idea.id}
+                                        color="var(--error)"
+                                        icon={Trash2}
+                                      >
+                                        {deletingId === idea.id ? "삭제 중..." : "삭제 확인"}
+                                      </PrimaryButton>
+                                      <button
+                                        onClick={() => setConfirmDeleteId(null)}
+                                        className="text-xs"
+                                        style={{ color: "var(--text-muted)" }}
+                                      >
+                                        취소
+                                      </button>
+                                    </div>
+                                    {deleteError && (
+                                      <p className="text-xs" style={{ color: "var(--error)" }}>
+                                        {deleteError}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

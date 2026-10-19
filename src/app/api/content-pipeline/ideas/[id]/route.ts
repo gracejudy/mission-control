@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteDraftIdea, IdeaNotDeletableError } from '@/lib/content-pipeline';
+import { deleteIdea, IdeaNotDeletableError } from '@/lib/content-pipeline';
 
 export const dynamic = 'force-dynamic';
 
-/** 2026-10-06: 초안 상태 소재 삭제 — 처리 방식(행 삭제·초안 보관·status 흔적)은 deleteDraftIdea 참고. */
+/** 2026-10-19: 상태 무관 소재 삭제(10-06 초안 한정에서 확장) — 처리 방식(행 삭제·초안 보관·status 흔적)은 deleteIdea 참고. */
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -14,7 +14,7 @@ export async function DELETE(
     return NextResponse.json({ error: `잘못된 소재 ID: ${id}` }, { status: 400 });
   }
   try {
-    return NextResponse.json(await deleteDraftIdea(id));
+    return NextResponse.json(await deleteIdea(id));
   } catch (error) {
     if (error instanceof IdeaNotDeletableError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
