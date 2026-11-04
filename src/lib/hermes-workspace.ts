@@ -21,6 +21,7 @@ export const HERMES_DIR = process.env.HERMES_DIR || path.join(os.homedir(), ".he
 const PROFILES_DIR = path.join(HERMES_DIR, "profiles");
 const BRAIN_DIR = process.env.BRAIN_DIR || path.join(os.homedir(), "brain");
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+const DEV_DIR = process.env.DEV_DIR || path.join(os.homedir(), "dev");
 
 export interface HermesWorkspace {
   id: string;
@@ -86,12 +87,15 @@ export function listWorkspaces(): HermesWorkspace[] {
 }
 
 /**
- * Workspaces for the general file browser: every Hermes profile plus ~/brain
- * and ~/.claude (separate, non-Hermes stores — not memory profiles, so
+ * Workspaces for the general file browser: every Hermes profile plus ~/dev,
+ * ~/brain, and ~/.claude (separate, non-Hermes stores — not memory profiles, so
  * they're excluded from the Memory page's workspace list).
  */
 export function listBrowseWorkspaces(): HermesWorkspace[] {
   const workspaces = listWorkspaces();
+  if (fs.existsSync(DEV_DIR)) {
+    workspaces.push({ id: "dev", name: "dev", emoji: "💻", path: DEV_DIR });
+  }
   if (fs.existsSync(BRAIN_DIR)) {
     workspaces.push({ id: "brain", name: "brain", emoji: "🧠", path: BRAIN_DIR });
   }

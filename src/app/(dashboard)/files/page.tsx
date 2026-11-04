@@ -24,9 +24,12 @@ export default function FilesPage() {
     fetch("/api/browse/workspaces")
       .then((res) => res.json())
       .then((data) => {
-        setWorkspaces(data.workspaces || []);
-        if (data.workspaces.length > 0) {
-          setSelectedWorkspace(data.workspaces[0].id);
+        const nextWorkspaces: Workspace[] = data.workspaces || [];
+        setWorkspaces(nextWorkspaces);
+        if (nextWorkspaces.length > 0) {
+          setSelectedWorkspace(
+            nextWorkspaces.find((workspace) => workspace.id === "dev")?.id || nextWorkspaces[0].id,
+          );
         }
       })
       .catch(() => setWorkspaces([]));
@@ -56,7 +59,7 @@ export default function FilesPage() {
           File Browser
         </h1>
         <p style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-secondary)" }}>
-          Hermes 프로필(default·프로필별)과 ~/brain 워크스페이스의 파일을 탐색·업로드·편집합니다
+          ~/dev, Hermes 프로필(default·프로필별), ~/brain 워크스페이스의 파일을 탐색·업로드·편집합니다
         </p>
       </div>
 
