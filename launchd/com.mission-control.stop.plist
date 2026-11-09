@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mission-control.stop</string>
+
+    <key>Comment</key>
+    <string>mission-control 자동 종료 (매일 20:00)
+launchctl bootout으로 com.mission-control.dev를 내린다. KeepAlive=true인 Job을 프로세스
+kill로만 멈추면 즉시 재기동되므로(sk-hynix-trader launchd와 동일한 함정) 반드시 bootout으로
+Job 자체를 내려야 한다. -w(영구 비활성화)는 쓰지 않음 — 다음 로그인/재부팅의 RunAtLoad가
+정상 발동해야 schedule-sync가 그 시점 시각에 맞게 다시 교정할 수 있기 때문.</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/judy/dev/judy-brain/mission-control/scripts/stop.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>20</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/judy/dev/judy-brain/mission-control/logs/schedule.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/judy/dev/judy-brain/mission-control/logs/schedule.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/judy</string>
+    </dict>
+</dict>
+</plist>

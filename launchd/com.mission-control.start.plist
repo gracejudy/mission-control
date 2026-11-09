@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mission-control.start</string>
+
+    <key>Comment</key>
+    <string>mission-control 자동 시작 (매일 09:00)
+com.mission-control.dev를 launchctl bootstrap으로 로드한다. 그 Job 자체의 RunAtLoad/
+KeepAlive는 건드리지 않음 — 이미 떠 있으면 아무것도 하지 않는다(idempotent).</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/judy/dev/judy-brain/mission-control/scripts/start.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/judy/dev/judy-brain/mission-control/logs/schedule.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/judy/dev/judy-brain/mission-control/logs/schedule.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/judy</string>
+    </dict>
+</dict>
+</plist>

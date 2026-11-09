@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mission-control.schedule-sync</string>
+
+    <key>Comment</key>
+    <string>재부팅/로그인 수렴 — com.mission-control.dev의 RunAtLoad는 시각과 무관하게
+무조건 발동하므로, 로그인 1회마다 현재 시각이 09:00~20:00 범위인지 보고 틀리면 즉시
+bootstrap/bootout으로 교정한다. 캘린더/인터벌 트리거 없음 — 로그인 시 1회만 실행.</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/judy/dev/judy-brain/mission-control/scripts/schedule-sync.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/judy/dev/judy-brain/mission-control/logs/schedule.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/judy/dev/judy-brain/mission-control/logs/schedule.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/judy</string>
+    </dict>
+</dict>
+</plist>
