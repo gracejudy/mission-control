@@ -13,6 +13,7 @@ import {
   Zap,
   Server,
   Terminal,
+  Mic,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -128,19 +129,23 @@ export default function DashboardPage() {
               { href: "/system", icon: Server, label: "System", color: "var(--success)" },
               { href: "/logs", icon: Terminal, label: "Live Logs", color: "#60a5fa" },
               { href: "/memory", icon: Brain, label: "Memory", color: "#f59e0b" },
-            ].map(({ href, icon: Icon, label, color }) => (
-              <Link
-                key={href}
-                href={href}
-                className="p-3 rounded-lg transition-all hover:scale-[1.02]"
-                style={{ backgroundColor: 'var(--card-elevated)', border: '1px solid var(--border)' }}
-              >
+              // gemini-live-server(/Users/judy/dev/gemini-live-server) — tailnet 전용(tailscale serve :8445), 외부 인터넷에선 안 열림
+              { href: "https://bot-macmini.tail7c5820.ts.net:8445/live/", icon: Mic, label: "영어연습", color: "#34d399", external: true },
+            ].map(({ href, icon: Icon, label, color, external }) => {
+              const inner = (
                 <div className="flex items-center gap-2">
                   <Icon className="w-4 h-4" style={{ color }} />
                   <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{label}</span>
                 </div>
-              </Link>
-            ))}
+              );
+              const cls = "p-3 rounded-lg transition-all hover:scale-[1.02]";
+              const sty = { backgroundColor: 'var(--card-elevated)', border: '1px solid var(--border)' };
+              return external ? (
+                <a key={href} href={href} target="_blank" rel="noopener noreferrer" className={cls} style={sty}>{inner}</a>
+              ) : (
+                <Link key={href} href={href} className={cls} style={sty}>{inner}</Link>
+              );
+            })}
           </div>
 
           {/* Notepad */}
